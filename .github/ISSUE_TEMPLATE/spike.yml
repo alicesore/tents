@@ -1,0 +1,38 @@
+name: Spike
+description: A time-boxed investigation that ends in a decision
+labels: ["spike"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to answer
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options to try
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: What will be tested
+      description: Scenarios and Windows versions to check.
+  - type: input
+    id: timebox
+    attributes:
+      label: Time box
+      placeholder: e.g. 2 days
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Usually a short write-up in `docs/spikes/`, a throwaway prototype branch and a decision.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Public documentation relied on. Don't reference another product's internals.

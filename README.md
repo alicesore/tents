@@ -51,8 +51,8 @@ Targets Windows 10 22H2 and Windows 11.
 
 ## Contributing
 
-Contributions are welcome once M0 lands. A `CONTRIBUTING.md` with build instructions, code style and the project's clean-room rules will be added then. Tents is an independent, clean-room project, so contributions must be original work.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, code style and the project's clean-room rules. Tents is an independent, clean-room project, so contributions must be original work.
 
 ## License
 
-MIT. The `LICENSE` file will be added in M0.
+MIT. See [LICENSE](LICENSE).
