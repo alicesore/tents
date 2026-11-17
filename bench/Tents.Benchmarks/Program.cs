@@ -1,5 +1,5 @@
 using BenchmarkDotNet.Running;
 
 // Entry point for all benchmark suites. Run with: dotnet run -c Release --project bench/Tents.Benchmarks -- --filter "*"
-// No suites exist yet; hot paths in Tents.Core get benchmarks as they are written (M1+).
+// Suites: LayoutPersistenceBenchmarks (layout file load and save, M1 step 4).
 BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
