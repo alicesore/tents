@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    THROWAWAY SPIKE CODE for M0 spike 3 (performance baseline). Not part of Tents.sln.
+    A minimal WPF tent, hosted the way spike 1 recommends. The GC, ReadyToRun and tiering variants are selected
+    with -p: properties at publish time (see measure.ps1), so every variant is the same source.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Tents.Spikes</RootNamespace>
+    <AssemblyName>WpfTent</AssemblyName>
+    <ApplicationManifest>..\app.manifest</ApplicationManifest>
+    <StartupObject>Tents.Spikes.Program</StartupObject>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\common\Native.cs" Link="Native.cs" />
+  </ItemGroup>
+
+</Project>
