@@ -121,6 +121,19 @@ public sealed class Layout : IEquatable<Layout>
 
     public override string ToString() => $"Layout with {Tents.Length} tents and {ItemCount} items ({Monitors})";
 
+    /// <summary>
+    /// Returns a layout with the same monitors and default tent but different tents, without re-checking the
+    /// invariants. Only for <see cref="LayoutOperations"/>, which preserve them by construction; the tests re-check
+    /// every result with <see cref="Create"/>.
+    /// </summary>
+    internal Layout WithTentsUnchecked(ImmutableArray<Tent> tents)
+    {
+        var defaultIndex = _defaultIndex < tents.Length && tents[_defaultIndex].Id == DefaultTentId
+            ? _defaultIndex
+            : FindIndex(tents.AsSpan(), DefaultTentId);
+        return new Layout(Monitors, tents, DefaultTentId, defaultIndex);
+    }
+
     private static int Validate(ImmutableArray<Tent> tents, TentId defaultTentId)
     {
         if (tents.IsEmpty)
