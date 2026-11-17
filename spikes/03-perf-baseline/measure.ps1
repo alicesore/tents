@@ -47,6 +47,8 @@ $rows = @(
     @('TYPICAL wpf nc+R2R',                       'wpf-nonconc-r2r',      'WpfTent.exe',   $typical,                   $true),
     @('TYPICAL wpf nc+R2R, software rendering',   'wpf-nonconc-r2r',      'WpfTent.exe',   ($typical + '--software'),  $false),
     @('TYPICAL wpf nc+R2R, trimmed once',         'wpf-nonconc-r2r',      'WpfTent.exe',   ($typical + '--trim'),      $false),
+    @('TYPICAL wpf nc+R2R, AllowsTransparency',   'wpf-nonconc-r2r',      'WpfTent.exe',   ($typical + '--transparent'), $false),
+    @('TYPICAL wpf nc+R2R, AllowsTransparency + software', 'wpf-nonconc-r2r', 'WpfTent.exe', ($typical + '--transparent' + '--software'), $false),
     @('TYPICAL win32 on CoreCLR',                 'win32-clr',            'Win32Tent.exe', $typical,                   $false),
     @('TYPICAL win32 NativeAOT',                  'win32-aot',            'Win32Tent.exe', $typical,                   $false)
 )
