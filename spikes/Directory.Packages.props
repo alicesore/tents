@@ -1,0 +1,8 @@
+<Project>
+
+  <!-- Throwaway spike code: central package management is off here, and the root package list is not inherited. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

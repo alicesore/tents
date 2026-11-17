@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Throwaway spike code. This file deliberately does NOT import the repo-root Directory.Build.props,
+    so the production rules (warnings as errors, analyzers, code style enforcement) do not apply here.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
