@@ -1,7 +1,7 @@
 # THROWAWAY SPIKE SCRIPT for M0 spike 3 (performance baseline). See docs/spikes/03-performance-baseline.md.
 #
 # Measures every published variant (run publish-variants.ps1 first) and writes results.csv and results.md.
-# Needs no elevation. Close heavy applications first and do not use the machine while it runs (about 35 minutes).
+# Needs no elevation. Close heavy applications first and do not use the machine while it runs (about 32 minutes).
 #
 # Per row:
 #   Startup    1 discarded warm-up launch, then -StartupRuns launches. The app itself reports the time from process
