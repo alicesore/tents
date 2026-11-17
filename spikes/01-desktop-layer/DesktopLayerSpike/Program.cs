@@ -14,6 +14,7 @@
 //   --mode=child-defview  re-parented under SHELLDLL_DefView (the icon view's parent)
 //   --mode=child-workerw  re-parented under the wallpaper WorkerW, behind the icons
 //   --layered=none|attr|wpf   none: ordinary window; attr: WS_EX_LAYERED + SetLayeredWindowAttributes; wpf: AllowsTransparency
+//   --owner=iconhost|progman  owned modes: which shell window owns the tent (default: the one hosting the icon view)
 //   --title=TentsSpike-x  --rect=x,y,w,h (physical px)  --color=RRGGBB  --log=path
 //
 // Event-driven only: no timers, no polling.
@@ -45,7 +46,7 @@ public static class Program
     }
 }
 
-internal sealed record Options(string Mode, string Layered, string Title, int X, int Y, int W, int H, Color Color, string LogPath)
+internal sealed record Options(string Mode, string Layered, string Title, int X, int Y, int W, int H, Color Color, string LogPath, string Owner)
 {
     public static Options Parse(string[] args)
     {
@@ -54,7 +55,7 @@ internal sealed record Options(string Mode, string Layered, string Title, int X,
         var r = Get("rect", "200,200,420,300").Split(',').Select(int.Parse).ToArray();
         var c = Convert.ToInt32(Get("color", "FF00C8"), 16);
         return new Options(mode, Get("layered", "none"), Get("title", "TentsSpike-" + mode), r[0], r[1], r[2], r[3],
-            Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c), Get("log", Path.Combine(Path.GetTempPath(), "tents-spike1.log")));
+            Color.FromRgb((byte)(c >> 16), (byte)(c >> 8), (byte)c), Get("log", Path.Combine(Path.GetTempPath(), "tents-spike1.log")), Get("owner", "iconhost"));
     }
 }
 
@@ -153,8 +154,14 @@ internal sealed class TentHost
             case "owned":
             case "owned-bottom":
             case "owned-pin":
-                N.SetWindowLongPtr(_tentHwnd, N.GWLP_HWNDPARENT, d.Progman);
-                Log.Write("attach", $"owner set to Progman err={Marshal.GetLastWin32Error()} ownerNow={N.H(N.GetWindow(_tentHwnd, N.GW_OWNER))}");
+                {
+                    // Own the tent to the top-level shell window that hosts the icon view. On Windows 11 (observed) that is
+                    // Progman. On layouts where the icon view lives in a top-level WorkerW (reported for Windows 10, untested
+                    // here) it is that WorkerW. --owner=progman forces Progman for comparison.
+                    var owner = _o.Owner == "progman" || d.DefViewParent == IntPtr.Zero ? d.Progman : d.DefViewParent;
+                    N.SetWindowLongPtr(_tentHwnd, N.GWLP_HWNDPARENT, owner);
+                    Log.Write("attach", $"owner set to {N.Class(owner)} err={Marshal.GetLastWin32Error()} ownerNow={N.H(N.GetWindow(_tentHwnd, N.GW_OWNER))}");
+                }
                 if (_o.Mode != "owned")
                     Log.Write("attach", "HWND_BOTTOM ok=" + N.SetWindowPos(_tentHwnd, N.HWND_BOTTOM, 0, 0, 0, 0, N.SWP_NOMOVE | N.SWP_NOSIZE | N.SWP_NOACTIVATE));
                 break;
