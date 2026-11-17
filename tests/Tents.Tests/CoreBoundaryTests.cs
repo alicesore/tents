@@ -23,7 +23,7 @@ public class CoreBoundaryTests
     [Fact]
     public void CoreAssembly_DoesNotReferenceUiOrWin32Assemblies()
     {
-        var references = typeof(CoreInfo).Assembly.GetReferencedAssemblies()
+        var references = typeof(Layout).Assembly.GetReferencedAssemblies()
             .Select(a => a.Name ?? string.Empty)
             .Where(name => _forbiddenAssemblyPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
