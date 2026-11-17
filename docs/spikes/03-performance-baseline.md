@@ -93,6 +93,8 @@ All 17 measurable rows. Framework-dependent unless stated. "nc" = non-concurrent
 | **TYPICAL** wpf nc + R2R, software rendering | 546 (543-547) | 0 | 2 | 2 / 8, 3 | 87.6 | 29.8 | 50.4 |
 | **TYPICAL** wpf nc + R2R, trimmed once | 2685 (2669-2694) | 0 | 2 | 2 / 10, 3 | 40.2 | 16.6 | 110.7 |
 | **TYPICAL** win32 on CoreCLR | 76 (74-83) | 0 | 0 | 0 / 4, 1 | 19.2 | 2.5 | 5.0 |
+| **TYPICAL** wpf nc + R2R, AllowsTransparency (follow-up run) | 696 (692-701) | 0 | 2 | 2 / 9, 3 | 118.6 | 43.2 | 81.6 |
+| **TYPICAL** wpf nc + R2R, AllowsTransparency + software (follow-up run) | 570 (566-574) | 0 | 2 | 2 / 8, 3 | 94.8 | 30.1 | 50.6 |
 | wpf trimmed (`PublishTrimmed`) | not measured: the SDK refuses to build it, see below | | | | | | |
 | win32 NativeAOT, single and TYPICAL | not measured: the native link step fails on this machine, see below | | | | | | |
 
@@ -108,7 +110,7 @@ The first run, which was stopped after 6 rows, gave startup medians within 1 to 
 | **TieredPGO off** | No difference. | Leave at the default. |
 | **Self-contained** | No measurable difference (472 vs 480 ms, within run-to-run spread). | Not worth the larger download on its own merits. M6 can decide based on installation, not performance. |
 | **Software rendering** | Single tent: 75 ms faster, 23 MB less working set, 33 MB less private bytes, 2 fewer threads. Typical setup: **2.1 s faster**, 36 MB less working set, 63 MB less private bytes. Idle unchanged. | Adopt for M1 behind a switch, pending the interactive measurement. See [Rendering mode](#rendering-mode). |
-| **AllowsTransparency** | 42 ms slower startup, working set unchanged, private bytes 10 MB lower, one fewer thread. | Avoid unless a feature needs per-pixel transparency. A tent with a solid background does not. |
+| **AllowsTransparency** | Single tent: 42 ms slower startup, working set unchanged, private bytes 10 MB lower, one fewer thread. Typical setup (follow-up run): **696 ms instead of 2659 ms** with hardware rendering, so the per-window hardware cost largely disappears; 118.6 MB working set, 81.6 MB private bytes. With software rendering as well: 570 ms (24 ms more than software without transparency), 94.8 MB working set, 50.6 MB private bytes. Idle unchanged (2 wakeups). | Usable if tents should be see-through. Transparency + software rendering meets every proposed budget; transparency with hardware rendering misses the private-bytes budget by 1.6 MB. Not measured: the redraw cost while dragging, scrolling or hovering, which for a per-pixel transparent window includes updating the whole window. Fully transparent pixels are expected to pass clicks through to the desktop (not tested here). |
 | **Working set trimmed once** | Working set 97.7 to 11.9 MB, private WS 30.0 to 4.2 MB. Private bytes unchanged (69.9 MB): nothing is freed, the pages are only taken out of RAM until they are touched again. After 60 s idle they were still out, which confirms that idle WPF touches almost nothing. Typical setup: 123.5 to 40.2 MB. Startup with trimming was 100 ms slower on the single tent but not on the typical setup; the trim runs after the startup time is written, so this was not expected and was not investigated. | **Do not use it to meet a budget.** It moves cost to the next interaction (page faults when the user hovers or drags) and mainly changes what Task Manager shows. Budgets below are set on untrimmed numbers. [`SetProcessWorkingSetSize`](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-setprocessworkingsetsize) |
 | **Trimming** (`PublishTrimmed`) | Not measurable: the SDK refuses with NETSDK1168, "WPF is not supported or recommended with trimming enabled". | Not available for WPF. [Docs](https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/incompatibilities) |
 | **NativeAOT** (Win32 test app only; WPF does not support it) | Not measured: the native link step (`link.exe`) failed because the Windows SDK libraries are not installed on this machine. Nothing was installed. | Only relevant to the Win32/Direct2D fallback, which is not needed. |
@@ -127,6 +129,8 @@ The typical setup is where the two modes differ:
 | Idle wakeups / CPU | 3 / 0 | 2 / 0 |
 
 Why hardware rendering costs about 240 ms per window here was not investigated. The cost appears for each window, and the windows are created one after another on the UI thread, so it adds up. It may depend on the GPU, the driver or the virtual display adapter on this machine. Tents shows mostly static content, which suits software rendering, but **its cost while the user interacts (dragging a tent, resizing, scrolling a large tent, hover effects) was not measured.** Software rendering uses the CPU for every frame that does render, and a 420x400 px tent is small, but a large tent at 200% DPI is 4 times the pixels.
+
+A follow-up run (01:15 to 01:19, machine idle) measured the typical setup with `AllowsTransparency`: 696 ms with hardware rendering and 570 ms with software rendering. The per-window hardware cost seen above mostly does not occur for these windows. This was observed, not explained.
 
 `RenderOptions.ProcessRenderMode` applies to the whole process ([docs](https://learn.microsoft.com/en-us/dotnet/api/system.windows.media.renderoptions.processrendermode)), so it is one switch in `Tents.App` startup.
 
