@@ -32,37 +32,45 @@ Expands §5 of `PROJECT_PLAN.md` into ordered, checkable steps. Each step should
 
 ## M1: MVP (core tents)
 
+Decisions from the M0 spikes that shape M1 ([spike 1](docs/spikes/01-desktop-layer.md), [spike 2](docs/spikes/02-desktop-items.md), [spike 3](docs/spikes/03-performance-baseline.md)):
+- **Hosting:** each tent is a top-level tool window owned by the shell's desktop window and pinned to the bottom of the z-order. No re-parenting under Progman/WorkerW.
+- **Desktop items:** the native icon layer is switched off (`FWF_NOICONS`) and Tents draws every desktop item. There are no loose icons in M1: every item belongs to a tent, and items the user has not assigned live in a default tent.
+- **Rendering:** WPF with software rendering, behind one switch, until the interactive measurement (step 12) confirms or replaces it.
+- **The tent UI thread never blocks.** Because the tent is owned by a window on Explorer's thread, a hung tent thread also blocks mouse input to the desktop. Shell enumeration, icon extraction and file I/O run on other threads.
+
 **A. Core model (`Tents.Core`, fully unit-tested)**
-1. Types: `Tent` (id, title, bounds, rolled-up flag, item ids), `Layout`, `MonitorConfigKey`.
-2. Operations: create, move, resize, rename, delete, roll up and expand, assign and remove items. Pure and deterministic.
+1. Types: `Tent` (id, title, bounds, rolled-up flag, item ids), `Layout` (with exactly one default tent), `MonitorConfigKey`.
+2. Operations: create, move, resize, rename, delete, roll up and expand, assign and remove items. Pure and deterministic. Items that are not assigned, and items of a deleted tent, go to the default tent.
 3. JSON persistence with a versioned schema: `System.Text.Json` source generators, atomic write (temp file then replace), debounced saver, corrupt-file recovery (keep `.bak`).
 4. Benchmarks for load and save with 10 tents / 200 items and with a stress size.
 
 **B. Shell layer (`Tents.Shell`)**
-5. Enumerate the Desktop and Public Desktop folders via `IShellItem`. Stable item identity (parsing name).
-6. Icon retrieval via `IShellItemImageFactory` at exact pixel size. Frozen-bitmap cache shared across tents, keyed by item and size.
-7. `FileSystemWatcher` on both folders with event coalescing (one update per burst).
-8. `ShellExecuteEx` open, and `IContextMenu` native context menu (including the "Show more options" behavior on Win11).
-9. OLE drop target and drag source with shell data objects. Verify drag to and from Explorer and other apps.
+5. Desktop item list from the native desktop view: acquire the desktop's `IFolderView2` (and re-acquire it after `TaskbarCreated`), list items with `IFolderView::Items`. Stable item identity (parsing name). Do not enumerate `FOLDERID_Desktop` directly: it returns items the desktop does not show (22 against 4 in spike 2).
+6. Icon retrieval via `IShellItemImageFactory` at exact pixel size, with correct premultiplied-alpha conversion of the returned bitmap. Frozen-bitmap cache shared across tents, keyed by item and size.
+7. `FileSystemWatcher` on the Desktop and Public Desktop folders with event coalescing (one update per burst). The native view is the reference for which items exist but lags the file system by about 1.3 s.
+8. Native icon layer: switch `FWF_NOICONS` on and off through `IFolderView2::SetCurrentFolderFlags`, and keep a state file that records "Tents turned the icons off", checked at the next start. After switching back on, the view lists 0 items for a moment; do not rely on the list immediately. Notice when the user turns Show desktop icons back on while Tents runs, and treat it as Pause.
+9. `ShellExecuteEx` open, and `IContextMenu` native context menu (including the "Show more options" behavior on Win11).
+10. OLE drop target and drag source with shell data objects. Verify drag to and from Explorer and other apps.
 
 **C. App**
-10. Borderless, no-taskbar, non-activating tent window hosted using the spike 1 method. Re-attach after Explorer restart.
-11. Per-monitor v2 DPI manifest. Correct sizing on mixed DPI.
-12. Move and resize by dragging (title bar and edges), with snap to a grid (optional, off by default).
-13. Create a tent from the desktop context menu or tray, plus delete with confirm, and title editing in place.
-14. Item view: virtualized, lazy icon loading. Item selection, double-click to open, right-click native menu, drag in and out.
-15. Rollup: click title to collapse or expand. State persists.
-16. Layout restore on startup, including items that were deleted while Tents was not running.
-17. Tray icon (Settings placeholder, Pause, Exit). Pause releases hooks and the hidden-icon state fully.
-18. Start with Windows: `HKCU\...\Run` toggle.
-19. Crash safety: on any unhandled exception, restore native desktop icons before exit.
+11. Desktop host (spike 1, `owned-pin`): tent windows with `WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, owner set at creation to `GetShellWindow()`, every z-order change rewritten to `HWND_BOTTOM` in `WM_WINDOWPOSCHANGING`, `MA_NOACTIVATE`. Behind an interface so `bottom-react2` can be used if Windows 10 needs it. One hidden controller window receives `TaskbarCreated` (idempotent: re-own the tent if it still exists, recreate it if not), `WM_DISPLAYCHANGE` and session notifications.
+12. Rendering mode: `RenderOptions.ProcessRenderMode = SoftwareOnly`, set once at startup behind one setting. Measure the interactive cost (drag, resize, scroll a 200-item tent, hover) with software and hardware rendering, with and without `AllowsTransparency`, at 100% and 200% DPI. Decide the default from that; if software rendering is ruled out, revisit the budgets in `PROJECT_PLAN.md` §7 explicitly.
+13. Per-monitor v2 DPI manifest. Correct sizing on mixed DPI.
+14. Move and resize by dragging (title bar and edges), with snap to a grid (optional, off by default).
+15. Create a tent from the desktop context menu or tray, plus delete with confirm, and title editing in place.
+16. Item view: virtualized, lazy icon loading. Item selection, double-click to open, right-click native menu, drag in and out.
+17. Rollup: click title to collapse or expand. State persists.
+18. Layout restore on startup, including items that were deleted while Tents was not running.
+19. Tray icon (Settings placeholder, Pause, Exit). Pause and Exit turn the native icons back on and release every hook, so the plain desktop is back.
+20. Start with Windows: `HKCU\...\Run` toggle.
+21. Crash safety, three layers: restore the native icons in the unhandled-exception handler (not only in `finally`); a watchdog process that waits on the main process handle and restores them if Tents is killed; the state file from step 8, checked at the next start.
 
 **D. Quality and release**
-20. Idle check script: launch, wait, sample CPU and RAM over N minutes, fail CI or the release checklist if over budget. Confirm zero wakeups with ETW or WPR.
-21. Manual test matrix: Win10 22H2 and Win11, Explorer restart, sleep/resume, monitor hot-plug, DPI change, high-contrast, Narrator pass.
-22. Publish a portable zip (self-contained or framework-dependent, ReadyToRun) to GitHub Releases, with idle numbers in the notes. Tag `v0.1.0`.
+22. Idle check script, based on `spikes/03-perf-baseline/measure.ps1`: launch, settle, sample CPU, per-thread wakeups, working set, private working set and private bytes, and fail the release checklist if over the budgets in `PROJECT_PLAN.md` §7. Confirm the wakeups with WPR from an elevated prompt.
+23. Manual test matrix: Win10 22H2 and Win11, Explorer restart, sleep/resume, monitor hot-plug, DPI change, high-contrast, Narrator pass. Include every Windows 10 item listed as untested in the three spike write-ups.
+24. Publish a portable zip (framework-dependent, ReadyToRun, Workstation non-concurrent GC) to GitHub Releases, with idle numbers in the notes. Tag `v0.1.0`.
 
-**Exit:** works on Win10 22H2 and Win11, survives an Explorer restart, meets the budgets.
+**Exit:** works on Win10 22H2 and Win11, survives an Explorer restart, meets the budgets in `PROJECT_PLAN.md` §7.
 
 ---
 
