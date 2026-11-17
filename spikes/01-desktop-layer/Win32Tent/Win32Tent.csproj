@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- THROWAWAY SPIKE CODE. A bare Win32 window (no WPF) used to separate OS behavior from WPF behavior. Not part of Tents.sln. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Tents.Spikes</RootNamespace>
+    <ApplicationManifest>..\DesktopLayerSpike\app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\common\Native.cs" Link="Native.cs" />
+  </ItemGroup>
+
+</Project>
