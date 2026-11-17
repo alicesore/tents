@@ -1,0 +1,35 @@
+name: Performance issue
+description: Tents uses too much CPU, memory or startup time
+labels: ["performance"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: What is affected?
+      options:
+        - Idle CPU or wakeups
+        - Memory (working set / private bytes)
+        - Startup time
+        - Responsiveness while interacting
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Numbers and how you got them (Task Manager, dotnet-counters, PerfView, WPR/WPA).
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Number of tents and icons, monitors, Windows version, Tents version.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: Which budget in the project plan does this break?

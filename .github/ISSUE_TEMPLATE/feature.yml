@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Tents makes hard?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: perf
+    attributes:
+      label: Performance impact
+      description: Could this need a timer, polling, extra memory or a new dependency? Tents must stay extremely light while idle.
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Link any public documentation this idea relies on. Don't reference another product's internals.
