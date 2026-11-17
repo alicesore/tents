@@ -1,0 +1,56 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+
+# Test and benchmark output
+TestResults/
+BenchmarkDotNet.Artifacts/
+*.trx
+coverage*.xml
+*.coverage
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+project.lock.json
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.VC.db
+*.VC.VC.opendb
+launchSettings.json.user
+_ReSharper*/
+*.DotSettings.user
+
+# VS Code (keep shared config, ignore the rest)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains
+.idea/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Local scratch
+*.tmp
+*.log
+*.swp
