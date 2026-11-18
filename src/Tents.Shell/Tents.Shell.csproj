@@ -3,7 +3,17 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--
+      Some shell structs and interfaces (IShellBrowser, SHELLEXECUTEINFOW) have a different layout on 32-bit Windows,
+      so CsWin32 only generates them for one architecture. Tents runs as a 64-bit process; x64 and ARM64 share the
+      64-bit layout. ShellPlatform.EnsureSupported() rejects a 32-bit process at run time.
+    -->
+    <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tents.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
