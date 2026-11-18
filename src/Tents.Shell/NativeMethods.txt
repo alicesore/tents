@@ -1,2 +1,36 @@
 GetSystemMetrics
 SYSTEM_METRICS_INDEX
+
+// Desktop view (M1.5): the route to the desktop's IFolderView2 and its item list.
+ShellWindows
+IShellWindows
+IServiceProvider
+SID_STopLevelBrowser
+IShellBrowser
+IFolderView2
+IEnumIDList
+_SVGIO
+SHCreateItemFromIDList
+IShellItem
+SIGDN
+SFGAO_FLAGS
+VARENUM
+CoTaskMemFree
+
+// STA worker thread (M1.5): message-only window and message loop.
+OleInitialize
+OleUninitialize
+RegisterClassEx
+CreateWindowEx
+DefWindowProc
+DestroyWindow
+GetMessage
+TranslateMessage
+DispatchMessage
+PostMessage
+PostQuitMessage
+GetModuleHandle
+HWND_MESSAGE
+WM_APP
+WM_CLOSE
+WM_DESTROY
