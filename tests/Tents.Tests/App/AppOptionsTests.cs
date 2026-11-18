@@ -46,4 +46,11 @@ public sealed class AppOptionsTests
         Assert.Equal(0, options.SnapGrid);
         Assert.Equal([arg], options.Unknown);
     }
+
+    [Fact]
+    public void LayoutFile_IsTakenAsGiven()
+    {
+        Assert.Null(AppOptions.Parse([]).LayoutFile);
+        Assert.Equal(@"D:\Try\Layout.json", AppOptions.Parse([@"--layout-file=""D:\Try\Layout.json"""]).LayoutFile);
+    }
 }

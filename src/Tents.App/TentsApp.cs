@@ -1,6 +1,7 @@
 using System.Windows;
 using Tents.App.Items;
 using Tents.Core;
+using Tents.Core.Persistence;
 using Tents.Shell.Desktop;
 using Tents.Shell.DragDrop;
 using Tents.Shell.Hosting;
@@ -26,6 +27,8 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private TentWindowSet? _windows;
     private ControllerWindow? _controller;
     private DesktopState? _state;
+    private LayoutPersistence? _persistence;
+    private Layout? _savedLayout;
     private bool _shuttingDown;
     private bool _disposed;
 
@@ -41,8 +44,11 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _host = host;
     }
 
-    /// <summary>Creates the controller and the tent windows. Call once, on the UI thread, from <c>Application.Startup</c>.</summary>
-    public void Start()
+    /// <summary>
+    /// Creates the controller, restores the layout and shows the tent windows. Call once, on the UI thread, from
+    /// <c>Application.Startup</c>. The layout file is read on the thread pool; the UI thread only awaits it.
+    /// </summary>
+    public async void Start()
     {
         _log.Write($"Start: host {_host.Name}, {(_options.HardwareRendering ? "hardware" : "software")} rendering.");
         if (_options.Unknown.Count > 0)
@@ -53,8 +59,19 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _controller = new ControllerWindow(_log);
         _controller.EventReceived += OnControllerEvent;
 
+        _persistence = new LayoutPersistence(new LayoutFileStore(_options.LayoutFile ?? LayoutFileStore.DefaultFilePath), _log);
+        var saved = await _persistence.LoadAsync();
+        if (_shuttingDown)
+        {
+            return;
+        }
+
         var monitors = Monitors.GetAll();
-        _state = DesktopState.Create(CreateFirstLayout(monitors));
+        var layout = LayoutPersistence.Choose(saved, MonitorKey(monitors), () => CreateFirstLayout(monitors), out var choice);
+        layout = LayoutPersistence.BringOnScreen(layout, monitors, out var moved);
+        _log.Write($"Layout: {choice}, {layout.Tents.Length} tent(s), {layout.ItemCount} item(s); {moved} tent(s) moved on screen.");
+        _state = DesktopState.Create(layout);
+        _savedLayout = choice == LayoutChoice.Saved && moved == 0 ? layout : null; // anything else is saved once
         _windows = new TentWindowSet(_host, this);
         SyncWindows();
         _log.Write($"Showing {_windows.Count} tent(s) on {monitors.Count} monitor(s).");
@@ -90,6 +107,12 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _actions.Dispose();
         _icons.Dispose();
         _source.Dispose();
+
+        // Only when the app ends without Shutdown (Application.Run returned on its own): the UI thread is done, so the
+        // bounded wait for the last save cannot block a tent.
+        var persistence = _persistence;
+        _persistence = null;
+        persistence?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
     }
 
     // ---- ITentCommands ----
@@ -257,22 +280,25 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         return window;
     }
 
-    /// <summary>The layout before any is saved: the default tent on the primary monitor. Persistence is M1 step 18.</summary>
+    /// <summary>The layout before any is saved: the default tent on the primary monitor.</summary>
     internal static Layout CreateFirstLayout(IReadOnlyList<MonitorInfo> monitors)
     {
-        var key = MonitorConfigKey.Create(monitors.Select(m => new MonitorDescriptor(m.DeviceName, m.Bounds)));
         var bounds = TentPlacement.ForFirstTent(monitors.FirstOrDefault(m => m.IsPrimary));
-        return Layout.CreateWithDefaultTent(key, new Tent(TentId.New(), "Desktop", bounds));
+        return Layout.CreateWithDefaultTent(MonitorKey(monitors), new Tent(TentId.New(), "Desktop", bounds));
     }
 
-    private void OnSnapshot(DesktopSnapshot snapshot)
+    /// <summary>The layout key for a set of monitors: device names and bounds.</summary>
+    internal static MonitorConfigKey MonitorKey(IReadOnlyList<MonitorInfo> monitors) =>
+        MonitorConfigKey.Create(monitors.Select(m => new MonitorDescriptor(m.DeviceName, m.Bounds)));
+
+    private void OnSnapshot(DesktopSnapshot snapshot, bool foldersHaveVisibleEntries)
     {
         if (_shuttingDown || _state is null)
         {
             return;
         }
 
-        _state = _state.WithSnapshot(snapshot, out var ignored);
+        _state = _state.WithSnapshot(snapshot, out var ignored, foldersHaveVisibleEntries);
         if (ignored)
         {
             _log.Write("Ignored an empty read of the desktop view (Explorer busy); the next read decides.");
@@ -300,11 +326,19 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         SyncWindows();
     }
 
+    /// <summary>Shows the current state in the windows and saves the layout if it changed.</summary>
     private void SyncWindows()
     {
-        if (_state is { } state && _windows is not null)
+        if (_state is not { } state)
         {
-            _windows.Sync(state.Layout, state.ItemsOf);
+            return;
+        }
+
+        _windows?.Sync(state.Layout, state.ItemsOf);
+        if (!ReferenceEquals(state.Layout, _savedLayout) && _persistence is not null)
+        {
+            _savedLayout = state.Layout;
+            _persistence.Schedule(state.Layout);
         }
     }
 
@@ -336,7 +370,10 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
                 break;
 
             case ControllerEvent.SessionEnding:
-                _log.Write("Session ending.");
+                // Raised inside WM_ENDSESSION: the process may end when it returns, so this is the one place that waits.
+                // The save runs on the thread pool, so waiting cannot deadlock; it is bounded.
+                _log.Write("Session ending; saving the layout.");
+                _persistence?.FlushAsync().Wait(TimeSpan.FromSeconds(3));
                 break;
 
             case ControllerEvent.CloseRequested:
@@ -345,7 +382,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         }
     }
 
-    private void Shutdown(string reason)
+    private async void Shutdown(string reason)
     {
         if (_shuttingDown)
         {
@@ -353,7 +390,22 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         }
 
         _log.Write($"Shutdown ({reason}).");
+        var persistence = _persistence;
+        _persistence = null; // saved below, without blocking the UI thread
         Dispose();
+        if (persistence is not null)
+        {
+            try
+            {
+                // Awaited, not waited on: the UI thread keeps pumping while the last save runs.
+                await persistence.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch (TimeoutException)
+            {
+                _log.Write("The last layout save did not finish in time.");
+            }
+        }
+
         _application.Shutdown(0);
     }
 }
