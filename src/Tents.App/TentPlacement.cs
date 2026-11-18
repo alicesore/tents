@@ -38,5 +38,50 @@ internal static class TentPlacement
         return new PixelRect(x, y, width, height);
     }
 
+    /// <summary>How far a new tent is offset from the tent it was created from, at 100% scaling.</summary>
+    public const int CascadeOffset = 32;
+
+    /// <summary>
+    /// A new tent created from <paramref name="source"/>'s menu: default size, cascaded down and to the right of the
+    /// source on the source's monitor. If that would leave the monitor's work area, it goes to the work area's top-left
+    /// corner instead.
+    /// </summary>
+    public static PixelRect ForNewTent(PixelRect source, IReadOnlyList<MonitorInfo> monitors)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+        var monitor = MonitorOf(source, monitors);
+        if (monitor is null)
+        {
+            return source.WithPosition(source.X + CascadeOffset, source.Y + CascadeOffset).WithSize(DefaultWidth, DefaultHeight);
+        }
+
+        var scale = monitor.Scale;
+        var work = monitor.WorkArea;
+        var width = Math.Min(Scaled(DefaultWidth, scale), work.Width);
+        var height = Math.Min(Scaled(DefaultHeight, scale), work.Height);
+        var offset = Scaled(CascadeOffset, scale);
+        var x = source.X + offset;
+        var y = source.Y + offset;
+        if (x < work.X || y < work.Y || x + width > work.X + work.Width || y + height > work.Y + work.Height)
+        {
+            var margin = Scaled(Margin, scale);
+            x = work.X + Math.Min(margin, work.Width - width);
+            y = work.Y + Math.Min(margin, work.Height - height);
+        }
+
+        return new PixelRect(x, y, width, height);
+    }
+
+    /// <summary>The monitor that contains the centre of <paramref name="bounds"/>, else the primary, else the first.</summary>
+    public static MonitorInfo? MonitorOf(PixelRect bounds, IReadOnlyList<MonitorInfo> monitors)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+        var cx = bounds.X + (bounds.Width / 2);
+        var cy = bounds.Y + (bounds.Height / 2);
+        return monitors.FirstOrDefault(m => cx >= m.Bounds.X && cx < m.Bounds.X + m.Bounds.Width && cy >= m.Bounds.Y && cy < m.Bounds.Y + m.Bounds.Height)
+            ?? monitors.FirstOrDefault(m => m.IsPrimary)
+            ?? (monitors.Count > 0 ? monitors[0] : null);
+    }
+
     private static int Scaled(int value, double scale) => (int)Math.Round(value * scale, MidpointRounding.AwayFromZero);
 }

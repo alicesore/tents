@@ -28,4 +28,13 @@ public static class NativeWindow
             : null;
 
     public static bool Exists(nint hwnd) => hwnd != 0 && PInvoke.IsWindow((HWND)hwnd);
+
+    /// <summary>The window the user is working in, or 0.</summary>
+    public static nint GetForeground() => PInvoke.GetForegroundWindow();
+
+    /// <summary>
+    /// Gives the foreground back to a window, for example after editing a tent title. Windows allows it only while this
+    /// process owns the foreground (it does while a tent is being edited).
+    /// </summary>
+    public static bool SetForeground(nint hwnd) => Exists(hwnd) && PInvoke.SetForegroundWindow((HWND)hwnd);
 }

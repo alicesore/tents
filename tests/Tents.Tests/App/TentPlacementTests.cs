@@ -51,4 +51,44 @@ public sealed class TentPlacementTests
     [Fact]
     public void ForFirstTent_WithoutMonitors_UsesTheFallback() =>
         Assert.Equal(TentPlacement.Fallback, TentPlacement.ForFirstTent(null));
+
+    private static readonly MonitorInfo _left = new("L", new PixelRect(-1920, 0, 1920, 1080), new PixelRect(-1920, 0, 1920, 1040), 96, false);
+    private static readonly MonitorInfo _main = new("P", new PixelRect(0, 0, 2560, 1440), new PixelRect(0, 0, 2560, 1392), 144, true);
+
+    [Fact]
+    public void ForNewTent_CascadesFromTheSource_AtTheMonitorsScale()
+    {
+        var bounds = TentPlacement.ForNewTent(new PixelRect(100, 100, 400, 500), [_left, _main]);
+
+        Assert.Equal(new PixelRect(148, 148, 570, 690), bounds);
+    }
+
+    [Fact]
+    public void ForNewTent_StaysOnTheSourcesMonitor()
+    {
+        var bounds = TentPlacement.ForNewTent(new PixelRect(-1800, 50, 380, 460), [_left, _main]);
+
+        Assert.Equal(new PixelRect(-1768, 82, 380, 460), bounds);
+    }
+
+    [Fact]
+    public void ForNewTent_WouldLeaveTheWorkArea_GoesToItsTopLeft()
+    {
+        var bounds = TentPlacement.ForNewTent(new PixelRect(2100, 900, 400, 400), [_left, _main]);
+
+        Assert.Equal(new PixelRect(36, 36, 570, 690), bounds);
+    }
+
+    [Fact]
+    public void ForNewTent_WithoutMonitors_Cascades() =>
+        Assert.Equal(new PixelRect(132, 132, 380, 460), TentPlacement.ForNewTent(new PixelRect(100, 100, 10, 10), []));
+
+    [Fact]
+    public void MonitorOf_UsesTheCentre_ThenThePrimary()
+    {
+        Assert.Same(_left, TentPlacement.MonitorOf(new PixelRect(-300, 0, 400, 100), [_left, _main])); // centre at x = -100
+        Assert.Same(_main, TentPlacement.MonitorOf(new PixelRect(-100, 0, 400, 100), [_left, _main])); // centre at x = 100
+        Assert.Same(_main, TentPlacement.MonitorOf(new PixelRect(9000, 9000, 10, 10), [_left, _main])); // off every monitor
+        Assert.Null(TentPlacement.MonitorOf(new PixelRect(0, 0, 10, 10), []));
+    }
 }
