@@ -158,6 +158,62 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
         }
     }
 
+    /// <summary>
+    /// Diagnostic for the missed notification: the watch fires for writes from other processes on a throwaway key, but
+    /// not for Explorer's switch. Records which kinds of watch fire, and whether a handle opened before the switch still
+    /// sees the new value (it does not if Explorer replaces the key instead of writing the value).
+    /// </summary>
+    [DesktopChangesFact]
+    public async Task Diagnostic_WhereExplorerRecordsTheSwitch()
+    {
+        var iconSwitch = new DesktopIconSwitch(_source);
+        Assert.True(await iconSwitch.AreIconsShownAsync(), "This test expects the desktop icons to be on when it starts.");
+        const string explorerKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer";
+        using var advanced = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(DesktopIconSettingWatcher.ExplorerAdvancedKey)!;
+        using var explorer = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(explorerKey)!;
+        using var hkcu = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software")!;
+        var all = Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_NAME
+            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_ATTRIBUTES
+            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_LAST_SET
+            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_SECURITY;
+        using var advancedValues = Arm(advanced, subtree: false, Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_LAST_SET);
+        using var advancedAll = Arm(advanced, subtree: false, all);
+        using var explorerTree = Arm(explorer, subtree: true, all);
+        using var softwareTree = Arm(hkcu, subtree: true, all);
+        try
+        {
+            await iconSwitch.SetIconsShownAsync(false);
+            await Task.Delay(2000);
+            output.WriteLine($"after off, 2 s: Advanced values {advancedValues.WaitOne(0)}, Advanced any {advancedAll.WaitOne(0)}, Explorer subtree {explorerTree.WaitOne(0)}, HKCU\\Software subtree {softwareTree.WaitOne(0)}");
+            output.WriteLine($"HideIcons through the handle opened before: {Read(advanced)}; through a new handle: {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
+        }
+        finally
+        {
+            await EnsureIconsOnAsync(iconSwitch);
+        }
+
+        static AutoResetEvent Arm(Microsoft.Win32.RegistryKey key, bool subtree, Windows.Win32.System.Registry.REG_NOTIFY_FILTER filter)
+        {
+            var signal = new AutoResetEvent(false);
+            var result = Windows.Win32.PInvoke.RegNotifyChangeKeyValue(
+                key.Handle, subtree, filter | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_THREAD_AGNOSTIC, signal.SafeWaitHandle, true);
+            Assert.Equal(Windows.Win32.Foundation.WIN32_ERROR.ERROR_SUCCESS, result);
+            return signal;
+        }
+
+        static string Read(Microsoft.Win32.RegistryKey key)
+        {
+            try
+            {
+                return key.GetValue("HideIcons")?.ToString() ?? "absent";
+            }
+            catch (IOException ex)
+            {
+                return $"error ({ex.GetType().Name}: 0x{ex.HResult:X8})";
+            }
+        }
+    }
+
     private async Task<int> ItemCountAsync() => await _source.InvokeWithViewAsync(view => view.ItemCount());
 
     // Test-only measurement: re-reads every 50 ms for up to 10 s until the view lists the expected count again.

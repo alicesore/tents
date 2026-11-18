@@ -45,6 +45,28 @@ public sealed class DesktopIconSettingWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ChangeFromAnotherProcess_IsReported()
+    {
+        using var watcher = new DesktopIconSettingWatcher(_keyPath);
+        watcher.Changed += (_, _) => _changed.Release();
+        Assert.True(watcher.Start());
+
+        // Explorer writes the real value from its own process, so check a write from outside the test process too.
+        var regExe = Path.Combine(Environment.SystemDirectory, "reg.exe");
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            regExe, ["add", $@"HKCU\{_keyPath}", "/v", "HideIcons", "/t", "REG_DWORD", "/d", "1", "/f"])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        await process.WaitForExitAsync();
+        Assert.Equal(0, process.ExitCode);
+
+        Assert.True(await _changed.WaitAsync(_timeout), "A change from another process was not reported.");
+    }
+
+    [Fact]
     public async Task NothingChanging_ReportsNothing()
     {
         using var watcher = new DesktopIconSettingWatcher(_keyPath);
