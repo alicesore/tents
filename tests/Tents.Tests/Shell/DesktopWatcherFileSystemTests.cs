@@ -8,7 +8,7 @@ namespace Tents.Tests.Shell;
 /// A real FileSystemWatcher on a temporary folder (never the desktop) with the real clock. Runs in CI. Assertions
 /// allow a burst to split into two windows on a slow machine, but never into one batch per file.
 /// </summary>
-public sealed class DesktopWatcherFileSystemTests : IAsyncDisposable
+public sealed class DesktopWatcherFileSystemTests : IAsyncLifetime, IAsyncDisposable
 {
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(15);
 
@@ -32,11 +32,19 @@ public sealed class DesktopWatcherFileSystemTests : IAsyncDisposable
         Assert.Equal(1, _watcher.Start());
     }
 
-    public async ValueTask DisposeAsync()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    ValueTask IAsyncDisposable.DisposeAsync() => new(DisposeAsync());
+
+    // IAsyncLifetime, not IAsyncDisposable: xUnit 2 does not call IAsyncDisposable on test classes.
+    public async Task DisposeAsync()
     {
         await _watcher.DisposeAsync();
         _settled.Dispose();
-        Directory.Delete(_folder, recursive: true);
+        if (Directory.Exists(_folder))
+        {
+            Directory.Delete(_folder, recursive: true);
+        }
     }
 
     [Fact]

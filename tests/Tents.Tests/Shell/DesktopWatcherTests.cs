@@ -5,7 +5,7 @@ using Tents.Tests.Persistence;
 namespace Tents.Tests.Shell;
 
 /// <summary>The watcher's two stages on a manual clock, fed with synthetic events. No file system, no desktop.</summary>
-public sealed class DesktopWatcherTests : IAsyncDisposable
+public sealed class DesktopWatcherTests : IAsyncLifetime, IAsyncDisposable
 {
     private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(10);
     private static readonly DesktopWatcherOptions _options = new()
@@ -37,7 +37,12 @@ public sealed class DesktopWatcherTests : IAsyncDisposable
         };
     }
 
-    public async ValueTask DisposeAsync()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    ValueTask IAsyncDisposable.DisposeAsync() => new(DisposeAsync());
+
+    // IAsyncLifetime, not IAsyncDisposable: xUnit 2 does not call IAsyncDisposable on test classes.
+    public async Task DisposeAsync()
     {
         await _watcher.DisposeAsync();
         _batchRaised.Dispose();
