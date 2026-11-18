@@ -67,7 +67,7 @@ public sealed class DesktopItemSource : IDisposable
         {
             return work(_view);
         }
-        catch (COMException ex) when (ComErrors.IsDisconnected(ex.HResult))
+        catch (Exception ex) when (ComErrors.IsDisconnected(ex.HResult))
         {
             // Explorer restarted since the view was acquired. Try once with the new shell; no retry loop.
             ReleaseView();
