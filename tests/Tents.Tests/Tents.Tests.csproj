@@ -26,6 +26,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tents.Core\Tents.Core.csproj" />
     <ProjectReference Include="..\..\src\Tents.Shell\Tents.Shell.csproj" />
+    <!-- App-layer logic (window bookkeeping, placement, options) is tested without showing windows. -->
+    <ProjectReference Include="..\..\src\Tents.App\Tents.App.csproj" />
   </ItemGroup>
 
 </Project>
