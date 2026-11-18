@@ -34,3 +34,7 @@ HWND_MESSAGE
 WM_APP
 WM_CLOSE
 WM_DESTROY
+
+// Native icon layer (M1.8): notice when "Show desktop icons" changes.
+RegNotifyChangeKeyValue
+REG_NOTIFY_FILTER

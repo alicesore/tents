@@ -7,4 +7,10 @@ internal static class TestCategories
 
     /// <summary>Needs a signed-in desktop session with Explorer running. Reads the desktop, never changes it.</summary>
     public const string Desktop = "Desktop";
+
+    /// <summary>
+    /// Changes the desktop (switches the native icons off and on). Never in CI; runs only with
+    /// TENTS_ALLOW_DESKTOP_CHANGES=1 and with the user's consent.
+    /// </summary>
+    public const string DesktopChanges = "DesktopChanges";
 }
