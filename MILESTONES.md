@@ -48,7 +48,7 @@ Decisions from the M0 spikes that shape M1 ([spike 1](docs/spikes/01-desktop-lay
 5. Desktop item list from the native desktop view: acquire the desktop's `IFolderView2` (and re-acquire it after `TaskbarCreated`), list items with `IFolderView::Items`. Stable item identity (parsing name). Do not enumerate `FOLDERID_Desktop` directly: it returns items the desktop does not show (22 against 4 in spike 2).
 6. Icon retrieval via `IShellItemImageFactory` at exact pixel size, with correct premultiplied-alpha conversion of the returned bitmap. Frozen-bitmap cache shared across tents, keyed by item and size.
 7. `FileSystemWatcher` on the Desktop and Public Desktop folders with event coalescing (one update per burst). The native view is the reference for which items exist but lags the file system by about 1.3 s.
-8. Native icon layer: switch `FWF_NOICONS` on and off through `IFolderView2::SetCurrentFolderFlags`, and keep a state file that records "Tents turned the icons off", checked at the next start. After switching back on, the view lists 0 items for a moment; do not rely on the list immediately. Notice when the user turns Show desktop icons back on while Tents runs, and treat it as Pause.
+8. Native icon layer: switch `FWF_NOICONS` on and off through `IFolderView2::SetCurrentFolderFlags`, and keep a state file that records "Tents turned the icons off", checked at the next start. After either switch the view lists 0 items for a moment (about 60 ms); do not rely on the list immediately. If the user turns Show desktop icons back on while Tents runs, treat it as Pause. Tents finds this by rechecking at moments it is already woken for (start, resume from sleep, session unlock, Explorer restart), not live: Explorer's switch raises no registry change notification. Live detection (a WinEvent hook on the desktop's icon window) is deferred, to be added as an option if users report doubled icons.
 9. `ShellExecuteEx` open, and `IContextMenu` native context menu (including the "Show more options" behavior on Win11).
 10. OLE drop target and drag source with shell data objects. Verify drag to and from Explorer and other apps.
 
@@ -61,7 +61,7 @@ Decisions from the M0 spikes that shape M1 ([spike 1](docs/spikes/01-desktop-lay
 16. Item view: virtualized, lazy icon loading. Item selection, double-click to open, right-click native menu, drag in and out.
 17. Rollup: click title to collapse or expand. State persists.
 18. Layout restore on startup, including items that were deleted while Tents was not running.
-19. Tray icon (Settings placeholder, Pause, Exit). Pause and Exit turn the native icons back on and release every hook, so the plain desktop is back.
+19. Tray icon (Settings placeholder, Pause, Exit). Pause and Exit turn the native icons back on and release every hook, so the plain desktop is back. Pause is a checkbox named for what it does ("Show Windows desktop icons"), so there is an obvious way to see the plain desktop that is not Windows' own menu, and it is ticked when a recheck from step 8 finds the user turned the icons on.
 20. Start with Windows: `HKCU\...\Run` toggle.
 21. Crash safety, three layers: restore the native icons in the unhandled-exception handler (not only in `finally`); a watchdog process that waits on the main process handle and restores them if Tents is killed; the state file from step 8, checked at the next start.
 
