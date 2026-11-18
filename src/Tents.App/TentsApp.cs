@@ -177,6 +177,17 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         SyncWindows();
     }
 
+    public void TitleClicked(TentId tent)
+    {
+        if (_state is null || !_state.Layout.TryGetTent(tent, out var current))
+        {
+            return;
+        }
+
+        _state = _state.WithLayout(_state.Layout.SetTentRolledUp(tent, !current.IsRolledUp));
+        SyncWindows();
+    }
+
     ITentWindow ITentWindowFactory.Create(Tent tent, IReadOnlyList<DesktopItem> items)
     {
         var window = new TentWindow(tent, items, _host, _icons, this, _options.SnapGrid);
