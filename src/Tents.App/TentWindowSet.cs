@@ -18,6 +18,9 @@ internal interface ITentWindow
     /// <summary>Clears the item selection (another tent was clicked).</summary>
     void ClearSelection();
 
+    /// <summary>Shows or hides the window (Pause hides every tent).</summary>
+    void SetVisible(bool visible);
+
     /// <summary>Closes the window. Safe to call on a window that is already gone.</summary>
     void Close();
 }
@@ -57,6 +60,19 @@ internal sealed class TentWindowSet
 
     public int Count => _windows.Count;
 
+    /// <summary>False while Tents is paused: every window, also ones created meanwhile, is hidden.</summary>
+    public bool Visible { get; private set; } = true;
+
+    /// <summary>Shows or hides every tent window.</summary>
+    public void SetVisible(bool visible)
+    {
+        Visible = visible;
+        foreach (var window in _windows.Values)
+        {
+            window.SetVisible(visible);
+        }
+    }
+
     public bool TryGet(TentId id, out ITentWindow window) => _windows.TryGetValue(id, out window!);
 
     public IEnumerable<ITentWindow> Windows => _windows.Values;
@@ -81,7 +97,7 @@ internal sealed class TentWindowSet
             }
             else
             {
-                _windows[tent.Id] = _factory.Create(tent, itemsOf(tent));
+                _windows[tent.Id] = Created(_factory.Create(tent, itemsOf(tent)));
             }
         }
     }
@@ -118,13 +134,23 @@ internal sealed class TentWindowSet
                     break;
                 case ReattachResult.WindowGone:
                     window?.Close();
-                    _windows[tent.Id] = _factory.Create(tent, itemsOf(tent));
+                    _windows[tent.Id] = Created(_factory.Create(tent, itemsOf(tent)));
                     recreated++;
                     break;
             }
         }
 
         return new ExplorerRestartSummary(reattached, already, recreated, waiting);
+    }
+
+    private ITentWindow Created(ITentWindow window)
+    {
+        if (!Visible)
+        {
+            window.SetVisible(false);
+        }
+
+        return window;
     }
 
     public void CloseAll()

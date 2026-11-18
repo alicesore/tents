@@ -10,12 +10,18 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <!-- Per-monitor v2 DPI awareness (M1 step 13). -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Original artwork, drawn by Assets/make-icon.py. Also embedded for the tray icon. -->
+    <ApplicationIcon>Assets\Tents.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tents.Tests" />
     <!-- UseWPF drops System.IO from the implicit usings (WPF has its own Path type); nothing here uses that one. -->
     <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Tents.ico" LogicalName="Tents.ico" />
   </ItemGroup>
 
   <ItemGroup>

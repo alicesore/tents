@@ -53,4 +53,11 @@ public sealed class AppOptionsTests
         Assert.Null(AppOptions.Parse([]).LayoutFile);
         Assert.Equal(@"D:\Try\Layout.json", AppOptions.Parse([@"--layout-file=""D:\Try\Layout.json"""]).LayoutFile);
     }
+
+    [Fact]
+    public void HideNativeIcons_IsADeveloperOptIn()
+    {
+        Assert.False(AppOptions.Parse([]).HideNativeIcons);
+        Assert.True(AppOptions.Parse(["--hide-native-icons"]).HideNativeIcons);
+    }
 }

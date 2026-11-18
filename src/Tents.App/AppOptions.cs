@@ -10,6 +10,8 @@ namespace Tents.App;
 /// in the M2 settings window replaces it.</item>
 /// <item><c>--layout-file=PATH</c>: read and save the layout at PATH instead of <c>%APPDATA%\Tents\layout.json</c>
 /// (for trying things out without touching the real layout).</item>
+/// <item><c>--hide-native-icons</c>: developer flag. Turn the native desktop icons off while tents show the items, and
+/// back on for Pause and Exit. Off by default until crash safety (M1 step 21) is in place.</item>
 /// </list>
 /// </remarks>
 internal sealed record AppOptions
@@ -19,6 +21,8 @@ internal sealed record AppOptions
     public const string GridPrefix = "--grid=";
 
     public const string LayoutFilePrefix = "--layout-file=";
+
+    public const string HideNativeIconsSwitch = "--hide-native-icons";
 
     /// <summary>Largest grid accepted, in pixels.</summary>
     public const int MaxGrid = 200;
@@ -30,6 +34,9 @@ internal sealed record AppOptions
 
     /// <summary>Snap grid for moving and resizing tents, in physical pixels; 0 (the default) for none.</summary>
     public int SnapGrid { get; init; }
+
+    /// <summary>Turn the native desktop icons off while tents show the items.</summary>
+    public bool HideNativeIcons { get; init; }
 
     /// <summary>The layout file to use, or null for the default.</summary>
     public string? LayoutFile { get; init; }
@@ -48,6 +55,10 @@ internal sealed record AppOptions
             if (lower == HardwareRenderingSwitch)
             {
                 options = options with { HardwareRendering = true };
+            }
+            else if (lower == HideNativeIconsSwitch)
+            {
+                options = options with { HideNativeIcons = true };
             }
             else if (lower.StartsWith(GridPrefix, StringComparison.Ordinal)
                 && int.TryParse(lower.AsSpan(GridPrefix.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var grid)

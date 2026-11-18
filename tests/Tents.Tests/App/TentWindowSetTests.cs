@@ -121,6 +121,21 @@ public sealed class TentWindowSetTests
     }
 
     [Fact]
+    public void Pause_HidesEveryWindow_AlsoOnesCreatedMeanwhile()
+    {
+        var set = new TentWindowSet(_host, _factory);
+        var layout = TwoTents(out var a, out _);
+        set.Sync(layout, NoItems);
+
+        set.SetVisible(false);
+        set.Sync(layout.CreateTent(TentId.New(), "New", new PixelRect(0, 300, 100, 100)), NoItems);
+
+        Assert.All(_factory.Created, w => Assert.False(w.Visible));
+        set.SetVisible(true);
+        Assert.All(_factory.Created, w => Assert.True(w.Visible));
+    }
+
+    [Fact]
     public void CloseAll_ClosesEveryWindow()
     {
         var set = new TentWindowSet(_host, _factory);
@@ -192,6 +207,10 @@ public sealed class TentWindowSetTests
         public void ClearSelection()
         {
         }
+
+        public bool Visible { get; private set; } = true;
+
+        public void SetVisible(bool visible) => Visible = visible;
 
         public void Close() => Closed = true;
     }

@@ -192,6 +192,24 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
 
     public void ClearSelection() => _items.ClearSelection();
 
+    public void SetVisible(bool visible)
+    {
+        if (_handle == 0)
+        {
+            return;
+        }
+
+        if (visible)
+        {
+            Show(); // ShowActivated is false; the pin keeps it at the bottom
+            Place(WindowBounds(_tent));
+        }
+        else
+        {
+            Hide();
+        }
+    }
+
     void ITentWindow.Close()
     {
         if (_handle != 0)
