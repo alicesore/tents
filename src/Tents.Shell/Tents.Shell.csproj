@@ -9,10 +9,14 @@
       64-bit layout. ShellPlatform.EnsureSupported() rejects a 32-bit process at run time.
     -->
     <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
+    <!-- The icon cache hands out frozen WPF bitmaps (PresentationCore, WindowsBase). Framework reference, no package. -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tents.Tests" />
+    <!-- UseWPF drops System.IO from the implicit usings (WPF has its own Path type); nothing here uses that one. -->
+    <Using Include="System.IO" />
   </ItemGroup>
 
   <ItemGroup>
