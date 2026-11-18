@@ -54,7 +54,7 @@ Decisions from the M0 spikes that shape M1 ([spike 1](docs/spikes/01-desktop-lay
 
 **C. App**
 11. Desktop host (spike 1, `owned-pin`): tent windows with `WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, owner set at creation to `GetShellWindow()`, every z-order change rewritten to `HWND_BOTTOM` in `WM_WINDOWPOSCHANGING`, `MA_NOACTIVATE`. Behind an interface so `bottom-react2` can be used if Windows 10 needs it. One hidden controller window receives `TaskbarCreated` (idempotent: re-own the tent if it still exists, recreate it if not), `WM_DISPLAYCHANGE` and session notifications.
-12. Rendering mode: `RenderOptions.ProcessRenderMode = SoftwareOnly`, set once at startup behind one setting. Measure the interactive cost (drag, resize, scroll a 200-item tent, hover) with software and hardware rendering, with and without `AllowsTransparency`, at 100% and 200% DPI. Decide the default from that; if software rendering is ruled out, revisit the budgets in `PROJECT_PLAN.md` §7 explicitly.
+12. Rendering mode: `RenderOptions.ProcessRenderMode = SoftwareOnly`, set once at startup behind one setting. Measure the interactive cost (drag, resize, scroll a 200-item tent, hover) with software and hardware rendering, with and without `AllowsTransparency`, at 100% and 200% DPI. Decide the default from that; if software rendering is ruled out, revisit the budgets in `PROJECT_PLAN.md` §7 explicitly. Include one scrolling tent that receives frequent updates in the measurement, not only icon grids: it is the earliest signal for whether software rendering survives live content ([M4](#m4-live-tents)).
 13. Per-monitor v2 DPI manifest. Correct sizing on mixed DPI.
 14. Move and resize by dragging (title bar and edges), with snap to a grid (optional, off by default).
 15. Create a tent from the desktop context menu or tray, plus delete with confirm, and title editing in place.
@@ -87,38 +87,105 @@ Decisions from the M0 spikes that shape M1 ([spike 1](docs/spikes/01-desktop-lay
 
 ## M3: Folder-portal tents
 
-1. Model: a tent has a source (desktop items or a folder path). Persist it.
+Longer-term direction for live content, and why the source should be open-ended: [widgets-and-refresh.md](docs/widgets-and-refresh.md).
+
+1. Model: a tent has a source, stored as a provider kind (stable string id) plus versioned settings as plain data. Desktop items and a folder path are the first two kinds. Do not use a closed enum, so [M4](#m4-live-tents) can add kinds without a model change. Core never references provider code.
+   - A layout file that names an unknown kind must round-trip: keep the tent, show a placeholder, write it back unchanged. Add this rule to `docs/layout-file.md` and cover it in `LayoutSerializerTests` and `LayoutFileStoreTests`.
 2. Shell: enumerate any folder, with a watcher per portal (shared watcher pool, coalesced).
 3. UI: choose a folder when creating a tent, with a breadcrumb or "open folder" action, and a subfolder navigate-in/back-out behavior.
 4. Handle unavailable paths (network drives offline, removed drives) without polling. Show a placeholder and retry on a shell notification.
 5. Large folders: virtualization and cap on icon load concurrency. Benchmarks and memory check with 5,000 items.
 6. Release `v0.3.0`.
 
-## M4: Rules and auto-sort
+## M4: Live tents
+
+Design: [docs/widgets-and-refresh.md](docs/widgets-and-refresh.md). Depends on M3 (provider kind in the model, folder provider as the template). M5 and M6 do not depend on it; the M7 update check reuses its scheduler.
+
+Goal: tents can show live, interactive content without giving up the idle promise. No timer exists unless a visible tent needs one, and then one shared scheduler owns it. The first provider is **notes**, stored as plain Markdown files: it needs no network, only file system events, and it exercises the provider lifecycle, editing and the "your files stay put" rule before any timed refresh exists.
+
+**A. Spike**
+1. **Spike 4, live-content cost and keyboard input.** Throwaway prototype, two questions:
+   - *Cost.* One tent refreshed on a timer, one scrolling tent that gets frequent updates. Measure wakeups, CPU, working set and private bytes with the `spikes/03-perf-baseline/measure.ps1` method, in software and hardware rendering, at 100% and 200% DPI. Decide the scheduler design, the default rendering mode for live tents and how the per-provider allowance is measured.
+   - *Typing into a tent.* Tents are `WS_EX_NOACTIVATE` and never take focus (M1 step 11), but a notes tent needs the keyboard. Prototype the options (activate the tent only while editing, or edit in a separate short-lived window placed over the tent) and check the bottom-of-z-order pin, the owner relationship from spike 1, Explorer restart during an edit, IME composition, and that focus returns to the previous window on exit. Pick one and list its failure modes.
+   - Write up in `docs/spikes/`.
+
+**B. Core (`Tents.Core`, fully unit-tested)**
+2. Scheduling logic as pure code driven by `TimeProvider` (see `ManualTimeProvider` in the tests): due-time computation, coalescing of refreshes due close together, interval floor, exponential backoff with a cap, one wake-up time for the host to arm. No OS timer in Core.
+3. Provider declaration types: update source (`none`, `events`, `timed`), minimum interval, needs network, rendering cost class, memory class. Decide whether they live in Core or in a new `Tents.Providers` project; either way `CoreBoundaryTests` must still pass and Core must not reference provider code.
+4. Layout and settings: per-provider settings with a version and a migration hook, using the existing `ILayoutMigration` path.
+
+**C. Host**
+5. Provider registry and lifecycle: register by kind id at startup, create lazily, dispose when the tent is deleted, hidden or on an inactive layout. A hidden tent holds no timer and no network work.
+6. Shared scheduler host: at most one OS timer, armed to the earliest due refresh. Pause on quick-hide, inactive layout, session lock and display sleep. Resume with one refresh, not a burst of missed ones. Tests for each pause and resume condition.
+7. Worker hand-off: a provider fetches and parses off the UI thread and gives the UI thread one immutable snapshot. Draw only when a snapshot arrives or the user interacts. No render loop and no animation timer outside interaction. This keeps the M1 rule that the tent UI thread never blocks.
+8. Offline and metered handling: no retry loop while offline, wait for a network-change event. Decide whether refresh pauses on metered connections or battery saver (open question in the design doc).
+9. Unknown-kind placeholder tent, using the round-trip rule from M3 step 1.
+
+**D. First providers** (each a separate PR, each measured before it merges)
+10. **Notes provider** (kind `notes`): no network, update source `events`. A tent shows and edits one note.
+    - **Markdown files are the source of truth.** Each note is a plain UTF-8 `.md` file on disk. The layout file stores only the note's location, never its text. Tents adds nothing to the file (no front matter); the tent title is the tent's own title. Existing encoding (with or without BOM) and line endings are preserved on save.
+    - **Files stay put.** Tents never moves, renames or deletes a note file unless the user asks. Deleting a notes tent removes the tent, not the file. Default notes folder and per-tent override: decide in the PR and write it down in `docs/notes.md`.
+    - **Rendering:** a rendered Markdown view by default, with a plain-text edit mode. Decide the renderer in the PR: a Markdown library against a small renderer for a limited subset (headings, emphasis, lists, links, code, checkboxes). Written reason and a startup and memory measurement are required (new dependency rule); prefer the BCL if the subset is enough.
+    - **Saving:** the same atomic write as the layout file, driven by the debounced saver (one-shot delay, no idle timer). Nothing is written if the text did not change.
+    - **External edits:** a coalesced `FileSystemWatcher` on the note's folder. If the file changes on disk while the tent is not being edited, reload it. If it changes while the user has unsaved edits, keep the user's text and offer the choice; never overwrite silently. A missing file shows a placeholder, and the next edit creates it.
+    - **Large notes:** lazy and virtualized rendering. Measure a 1 MB note against the budgets.
+    - **Input:** uses the approach chosen in spike 4.
+    - **Tests:** save and load round trip, BOM and line-ending preservation, external change, change during an edit, missing file, a file locked by another program, and a note path on a drive that is gone.
+    - A tent over a *folder* of `.md` files is a possible follow-up that builds on the M3 folder provider. Not in this milestone.
+11. **Weather**: one small request, coarse `timed` refresh. The first provider that uses the scheduler. Pick the data source and record the reason (new dependency rule).
+12. Appearance settings that live tents need (corner radius, spacing, follow Windows accent color), applied from a settings event, never a timer. Extends M2 appearance.
+
+**E. Quality and release**
+13. Extend the idle check script with provider classes: desktop items only, plus each live provider between refreshes, plus during a refresh. Budgets per class as in the design doc; fail the release checklist if over them.
+14. Measure the per-provider memory allowance from steps 10 and 11 and record it in `PROJECT_PLAN.md` §7, together with the split budgets. A provider over its allowance ships as opt-in.
+15. Update the README wording from "no CPU while idle" to "no CPU while idle unless a visible live tent is refreshing", and report both numbers in the release notes.
+16. Manual matrix: Explorer restart (including during a notes edit), sleep and resume, lock and unlock, network loss and return, layout switch, quick-hide, with a live tent present. Include the Windows 10 22H2 rows still marked untested.
+17. Release `v0.4.0`.
+
+**Exit:** a live tent runs within its measured allowance, an idle desktop with only desktop-item tents is unchanged from M3, and no timer exists while every live tent is hidden.
+
+## M5: Rules and auto-sort
 
 1. Rules engine in `Tents.Core` (pure and testable): conditions (extension or type group, name glob or regex, date created/modified, size), actions (move item into tent X), ordered evaluation, first-match or all-match setting.
 2. Rule storage in the layout file (versioned migration).
 3. Apply rules to new items from the watcher only (event-driven). A manual "apply to existing items" action with a preview.
 4. Rule editor UI with a live match preview. Never moves files on disk. Only tent membership changes.
 5. Safe regex (match timeouts) and a benchmark for evaluating rules on a large desktop.
-6. Release `v0.4.0`.
+6. Release `v0.5.0`.
 
-## M5: Desktop pages and extras
+## M6: Desktop pages and extras
 
 1. Pages model: layout holds N pages, each with tents. Add, rename, reorder and delete pages.
 2. Switching UI: tray menu, hotkey (global hotkey registration, configurable), and optional edge or gesture trigger. No polling.
 3. Search and filter inside a tent: type-to-filter, with the filter cleared on defocus.
 4. Icon tinting per tent. Tint applied once at cache time (cached tinted bitmaps), not at render time.
-5. Release `v0.5.0`.
+5. Release `v0.6.0`.
 
-## M6: Distribution
+## M7: Distribution
 
 1. Decide MSIX vs WiX (signing, per-user install, startup-task story, uninstall cleanup of the Run key and `%APPDATA%\Tents` choice).
 2. Build the installer in CI. Code signing (decide certificate source).
 3. Publish a winget manifest (`alicesore.Tents`) and automate the PR on release.
-4. Auto-update: a check on launch or on a long timer (documented exception to "no timers"), signature and hash verification, a user toggle.
+4. Auto-update: a check on launch or on a long timer (documented exception to "no timers"; M4 provides the shared scheduler, so use it instead of creating a timer), signature and hash verification, a user toggle.
 5. Docs: README rewrite with screenshots, user guide, troubleshooting.
 6. Release `v1.0.0` after a full manual test pass and a final performance report.
+
+---
+
+## M8: Account-backed tents (calendar and mail)
+
+Depends on M4 (the provider and scheduler foundations) and is planned after the `v1.0.0` release in M7; release it as `v1.1.0`. These providers are separate because they bring sign-in, token storage and large dependencies, and they are the ones most likely to break the memory budget.
+
+1. **Decision record:** which providers, in what order (calendar before mail is expected, since mail needs rich content). Which services, and the minimum scope of access each needs.
+2. **Sign-in and token storage:** where tokens live (Windows credential storage, never the layout file), how sign-in works without a long-lived background process, and how tokens are removed on sign-out and uninstall. Every library needs a written reason and a startup and memory measurement.
+3. **Push versus poll:** use a push or change notification channel where the service offers one, otherwise a `timed` provider with a long floor interval.
+4. **Calendar provider:** read-only first. Cache the last snapshot so a restart draws immediately without a network call.
+5. **Mail provider, list view:** subjects and senders only, plain text. No message bodies.
+6. **Rich content decision:** if message bodies are wanted, evaluate a light custom renderer against an embedded web view. A web view adds a separate process, so it ships as an opt-in, `large` memory class provider with its own allowance. Measure before deciding.
+7. **Privacy:** nothing leaves the machine except calls to the chosen service, no telemetry, and a clear "what is stored and where" page in the docs.
+8. Measure, set the allowances, update the idle check and the budgets, and run the manual matrix with an account connected.
+
+**Exit:** each provider is inside its recorded allowance, a signed-out or offline tent shows a clear placeholder and costs nothing, and the privacy page matches the behavior.
 
 ---
 
