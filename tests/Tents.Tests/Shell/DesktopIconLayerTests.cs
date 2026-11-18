@@ -17,7 +17,7 @@ public sealed class DesktopIconStateTests(ITestOutputHelper output) : IDisposabl
     public async Task Switch_AgreesWithExplorersOwnRecord()
     {
         var shown = await new DesktopIconSwitch(_source).AreIconsShownAsync();
-        var hideIcons = DesktopIconSettingWatcher.ReadHideIcons();
+        var hideIcons = ExplorerRecord.ReadHideIcons();
 
         output.WriteLine($"icons shown: {shown}; HideIcons value: {hideIcons?.ToString() ?? "absent"}");
         if (hideIcons is { } hidden)
@@ -59,7 +59,7 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
             var offTook = clock.ElapsedMilliseconds;
             Assert.False(await iconSwitch.AreIconsShownAsync());
             Assert.True(file.Exists);
-            var hiddenRecord = DesktopIconSettingWatcher.ReadHideIcons();
+            var hiddenRecord = ExplorerRecord.ReadHideIcons();
 
             // The first run saw 0 items 7 ms after switching off. Spike 2 saw the list kept while hidden, so measure
             // whether it comes back while the icons stay off (test only; the guard never reads items).
@@ -77,7 +77,7 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
             output.WriteLine($"items: {items}");
             output.WriteLine($"while off: first read {offFirst}, then {offBack} after {offBackAfter} ms");
             output.WriteLine($"after on: first read {onFirst}, then {onBack} after {onBackAfter} ms");
-            output.WriteLine($"switch off took {offTook} ms, on took {onTook} ms; HideIcons while off: {hiddenRecord?.ToString() ?? "absent"}, after: {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
+            output.WriteLine($"switch off took {offTook} ms, on took {onTook} ms; HideIcons while off: {hiddenRecord?.ToString() ?? "absent"}, after: {ExplorerRecord.ReadHideIcons()?.ToString() ?? "absent"}");
             Assert.Equal(items, offBack);
             Assert.Equal(items, onBack);
         }
@@ -113,104 +113,28 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
     }
 
     [DesktopChangesFact]
-    public async Task UserTurningIconsOnWhileTentsRuns_IsNoticed()
+    public async Task UserTurningIconsOnWhileTentsRuns_IsFoundByTheRecheck()
     {
         var iconSwitch = new DesktopIconSwitch(_source);
         Assert.True(await iconSwitch.AreIconsShownAsync(), "This test expects the desktop icons to be on when it starts.");
         var file = new IconLayerStateFile(Path.Combine(_folder, "icon-layer.json"));
         using var guard = new IconLayerGuard(iconSwitch, file);
-        using var watcher = new DesktopIconSettingWatcher();
-        using var changed = new SemaphoreSlim(0);
         try
         {
-            watcher.Changed += (_, _) => changed.Release();
-            Assert.True(watcher.Start());
-
-            // The first run switched off and on within a few ms and saw no notification. A user toggles long after
-            // Tents switched off, so first wait for Explorer's own record of "off" (and its notification).
-            var clock = Stopwatch.StartNew();
-            await guard.TurnIconsOffAsync();
-            var offNoticed = await changed.WaitAsync(TimeSpan.FromSeconds(5));
-            var offNoticedAfter = clock.ElapsedMilliseconds;
-            var recordAfterOff = DesktopIconSettingWatcher.ReadHideIcons();
-            output.WriteLine($"Tents' switch-off: notified {offNoticed} after {offNoticedAfter} ms; HideIcons then {recordAfterOff?.ToString() ?? "absent"}");
-            while (changed.CurrentCount > 0)
-            {
-                await changed.WaitAsync();
-            }
-
-            Assert.False(await guard.HandleUserTurnedIconsOnAsync()); // Tents' own switch is not the user
+            Assert.Equal(TurnOffResult.TurnedOff, await guard.TurnIconsOffAsync());
+            Assert.False(await guard.RecheckAsync()); // Tents' own switch-off is not the user
+            Assert.True(file.Exists);
 
             // The same flag the desktop's View > Show desktop icons sets.
-            clock.Restart();
             await iconSwitch.SetIconsShownAsync(true);
-            var onNoticed = await changed.WaitAsync(TimeSpan.FromSeconds(10));
-            output.WriteLine($"user-style switch-on: notified {onNoticed} after {clock.ElapsedMilliseconds} ms; HideIcons then {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
-            Assert.True(offNoticed, "Tents' own switch-off was not noticed either.");
-            Assert.True(onNoticed, "The setting change was not noticed.");
 
-            Assert.True(await guard.HandleUserTurnedIconsOnAsync());
+            Assert.True(await guard.RecheckAsync());
             Assert.False(file.Exists);
+            Assert.True(await iconSwitch.AreIconsShownAsync());
         }
         finally
         {
             await EnsureIconsOnAsync(iconSwitch);
-        }
-    }
-
-    /// <summary>
-    /// Diagnostic for the missed notification: the watch fires for writes from other processes on a throwaway key, but
-    /// not for Explorer's switch. Records which kinds of watch fire, and whether a handle opened before the switch still
-    /// sees the new value (it does not if Explorer replaces the key instead of writing the value).
-    /// </summary>
-    [DesktopChangesFact]
-    public async Task Diagnostic_WhereExplorerRecordsTheSwitch()
-    {
-        var iconSwitch = new DesktopIconSwitch(_source);
-        Assert.True(await iconSwitch.AreIconsShownAsync(), "This test expects the desktop icons to be on when it starts.");
-        const string explorerKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer";
-        using var advanced = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(DesktopIconSettingWatcher.ExplorerAdvancedKey)!;
-        using var explorer = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(explorerKey)!;
-        using var hkcu = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software")!;
-        var all = Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_NAME
-            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_ATTRIBUTES
-            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_LAST_SET
-            | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_SECURITY;
-        using var advancedValues = Arm(advanced, subtree: false, Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_CHANGE_LAST_SET);
-        using var advancedAll = Arm(advanced, subtree: false, all);
-        using var explorerTree = Arm(explorer, subtree: true, all);
-        using var softwareTree = Arm(hkcu, subtree: true, all);
-        try
-        {
-            await iconSwitch.SetIconsShownAsync(false);
-            await Task.Delay(2000);
-            output.WriteLine($"after off, 2 s: Advanced values {advancedValues.WaitOne(0)}, Advanced any {advancedAll.WaitOne(0)}, Explorer subtree {explorerTree.WaitOne(0)}, HKCU\\Software subtree {softwareTree.WaitOne(0)}");
-            output.WriteLine($"HideIcons through the handle opened before: {Read(advanced)}; through a new handle: {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
-        }
-        finally
-        {
-            await EnsureIconsOnAsync(iconSwitch);
-        }
-
-        static AutoResetEvent Arm(Microsoft.Win32.RegistryKey key, bool subtree, Windows.Win32.System.Registry.REG_NOTIFY_FILTER filter)
-        {
-            var signal = new AutoResetEvent(false);
-            var result = Windows.Win32.PInvoke.RegNotifyChangeKeyValue(
-                key.Handle, subtree, filter | Windows.Win32.System.Registry.REG_NOTIFY_FILTER.REG_NOTIFY_THREAD_AGNOSTIC, signal.SafeWaitHandle, true);
-            Assert.Equal(Windows.Win32.Foundation.WIN32_ERROR.ERROR_SUCCESS, result);
-            return signal;
-        }
-
-        static string Read(Microsoft.Win32.RegistryKey key)
-        {
-            try
-            {
-                return key.GetValue("HideIcons")?.ToString() ?? "absent";
-            }
-            catch (IOException ex)
-            {
-                return $"error ({ex.GetType().Name}: 0x{ex.HResult:X8})";
-            }
         }
     }
 
@@ -251,5 +175,20 @@ internal sealed class DesktopChangesFactAttribute : FactAttribute
         {
             Skip = $"Changes the desktop icons. Set {Variable}=1 to run (see CONTRIBUTING.md).";
         }
+    }
+}
+
+/// <summary>
+/// Explorer's own record of "Show desktop icons" (<c>HideIcons</c>, undocumented). Test diagnostics only: the desktop
+/// view is the source of truth, and Explorer's switch raises no registry change notification on this value.
+/// </summary>
+internal static class ExplorerRecord
+{
+    private const string _advancedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+
+    public static bool? ReadHideIcons()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(_advancedKey);
+        return key?.GetValue("HideIcons") is int value ? value != 0 : null;
     }
 }

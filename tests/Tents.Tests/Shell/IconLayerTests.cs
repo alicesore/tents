@@ -203,37 +203,37 @@ public sealed class IconLayerTests : IDisposable
         Assert.Equal(1, _switch.SetCalls);
     }
 
-    // ---- the user turns icons back on ----
+    // ---- the user turns icons back on, found by a recheck ----
 
     [Fact]
-    public async Task UserTurningIconsOn_EndsOwnership_AndMeansPause()
+    public async Task Recheck_AfterTheUserTurnedIconsOn_EndsOwnership_AndMeansPause()
     {
         using var guard = Guard();
         await guard.TurnIconsOffAsync();
         _switch.Shown = true; // View > Show desktop icons
 
-        Assert.True(await guard.HandleUserTurnedIconsOnAsync());
+        Assert.True(await guard.RecheckAsync());
 
         Assert.False(_file.Exists);
         Assert.False(await guard.TurnIconsOnAsync()); // Exit after that changes nothing
     }
 
     [Fact]
-    public async Task OurOwnSwitchOff_IsNotMistakenForTheUser()
+    public async Task Recheck_WhileOurIconsAreOff_ChangesNothing()
     {
         using var guard = Guard();
         await guard.TurnIconsOffAsync();
 
-        Assert.False(await guard.HandleUserTurnedIconsOnAsync());
+        Assert.False(await guard.RecheckAsync());
         Assert.True(_file.Exists);
     }
 
     [Fact]
-    public async Task SettingChange_WithoutOwnership_IsIgnored()
+    public async Task Recheck_WithoutOwnership_ChangesNothing()
     {
         using var guard = Guard();
 
-        Assert.False(await guard.HandleUserTurnedIconsOnAsync());
+        Assert.False(await guard.RecheckAsync());
     }
 
     // ---- recovery at startup ----

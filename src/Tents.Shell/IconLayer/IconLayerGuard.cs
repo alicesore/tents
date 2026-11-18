@@ -57,9 +57,10 @@ public enum TurnOffResult
 /// on, same). A failed write means the icons are not switched off at all.</para>
 /// <para><b>The user's own setting wins.</b> If the icons are already off and no state file exists, the user turned them
 /// off; Tents does not take ownership and never turns them on for them. If the user turns them back on while Tents runs,
-/// <see cref="HandleUserTurnedIconsOnAsync"/> gives up ownership and reports it, and the app treats it as Pause.</para>
-/// <para><b>After switching on</b> the native view lists 0 items for a moment (spike 2). Nothing here reads the item
-/// list, and callers must not reconcile tents from a view read made right after <see cref="TurnIconsOnAsync"/>.</para>
+/// the next <see cref="RecheckAsync"/> gives up ownership and reports it, and the app treats it as Pause.</para>
+/// <para><b>After either switch</b> the native view lists 0 items for about 55 to 65 ms (measured; spike 2 saw it after
+/// switching on). Nothing here reads the item list, and callers must not reconcile tents from a view read made right
+/// after <see cref="TurnIconsOffAsync"/> or <see cref="TurnIconsOnAsync"/>.</para>
 /// <para>Pure apart from the injected switch, state file and process probe, so the rules are unit-tested.</para>
 /// </remarks>
 public sealed class IconLayerGuard : IDisposable
@@ -201,11 +202,18 @@ public sealed class IconLayerGuard : IDisposable
     }
 
     /// <summary>
-    /// Call when the desktop icon setting changed while Tents runs (<see cref="DesktopIconSettingWatcher"/>). If Tents
-    /// owned the icons-off state and the icons are now shown, the user turned them on: ownership ends and this returns
-    /// true, which the app treats as Pause. Otherwise false.
+    /// Checks whether the user turned Show desktop icons back on while Tents owned the icons-off state. If so, ownership
+    /// ends and this returns true, which the app treats as Pause. Otherwise false, and nothing changes.
     /// </summary>
-    public async Task<bool> HandleUserTurnedIconsOnAsync()
+    /// <remarks>
+    /// <para>Nothing notices the switch live: Explorer's switch raises no registry change notification (measured on
+    /// Windows 11 build 26300), and a live trigger (a WinEvent hook on the desktop's icon window) was deferred. The app
+    /// calls this at moments it is already woken for: start (after <see cref="RecoverAsync"/>), resume from sleep,
+    /// session unlock, and Explorer restart (<c>TaskbarCreated</c>). Between those moments, icons the user switched on
+    /// show twice until the next one or until they press Pause.</para>
+    /// <para>It costs one view read, and it never turns icons on or off.</para>
+    /// </remarks>
+    public async Task<bool> RecheckAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
