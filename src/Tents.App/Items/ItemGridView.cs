@@ -417,6 +417,9 @@ internal sealed class ItemGridView : FrameworkElement, IScrollInfo
         InvalidateVisual();
     }
 
+    /// <summary>Highlights an item as if the pointer rested on it (the rendering measurement drives hover this way).</summary>
+    internal void SetHoverForMeasurement(int index) => SetHover(index);
+
     private void SetHover(int index)
     {
         if (index != _hover)

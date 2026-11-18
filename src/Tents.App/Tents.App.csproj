@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tents.Tests" />
+    <InternalsVisibleTo Include="Tents.RenderMeasure" />
     <!-- UseWPF drops System.IO from the implicit usings (WPF has its own Path type); nothing here uses that one. -->
     <Using Include="System.IO" />
   </ItemGroup>
