@@ -7,6 +7,8 @@
     <IsTestProject>true</IsTestProject>
     <!-- Tests feed synthetic native structures (ID lists) to Tents.Shell. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Icon cache tests check the frozen WPF bitmaps. -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- UseWPF drops System.IO from the implicit usings (WPF has its own Path type); nothing here uses that one. -->
+    <Using Include="System.IO" />
   </ItemGroup>
 
   <ItemGroup>
