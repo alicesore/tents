@@ -84,7 +84,7 @@ internal static unsafe class ShellIconExtractor
         {
             factory->GetImage(new SIZE(pixelSize, pixelSize), flags, &bitmap);
         }
-        catch (COMException)
+        catch (Exception ex) when (ComErrors.IsCallFailure(ex))
         {
             return null; // The item has no image of this kind (or its handler failed).
         }
