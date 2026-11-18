@@ -68,3 +68,27 @@ WM_DRAWITEM
 WM_MEASUREITEM
 WM_MENUCHAR
 WM_NULL
+
+// Drag and drop (M1.10).
+RegisterDragDrop
+RevokeDragDrop
+IDropTarget
+IDataObject
+DROPEFFECT
+SHDoDragDrop
+IDropTargetHelper
+CLSID_DragDropHelper
+CoCreateInstance
+SHCreateShellItemArrayFromDataObject
+IShellItemArray
+RegisterClipboardFormat
+GlobalAlloc
+GlobalLock
+GlobalUnlock
+GlobalFree
+GlobalSize
+ReleaseStgMedium
+FORMATETC
+STGMEDIUM
+TYMED
+DVASPECT
