@@ -9,6 +9,7 @@ internal static class TrayText
     public const int PauseCommand = 2;
     public const int SettingsCommand = 3;
     public const int ExitCommand = 4;
+    public const int StartWithWindowsCommand = 5;
 
     public static string Tooltip(bool paused) => paused ? "Tents (paused)" : "Tents";
 
@@ -16,11 +17,12 @@ internal static class TrayText
     /// The menu. Pause is a checkbox named for what it does: ticked, the Windows desktop icons show and the tents are
     /// hidden. Settings is a placeholder until the M2 settings window.
     /// </summary>
-    public static IReadOnlyList<TrayMenuItem> Menu(bool paused) =>
+    public static IReadOnlyList<TrayMenuItem> Menu(bool paused, bool startWithWindows = false) =>
     [
         new(NewTentCommand, "&New tent", Enabled: !paused),
         new(PauseCommand, "&Show Windows desktop icons", Checked: paused),
         TrayMenuItem.Separator,
+        new(StartWithWindowsCommand, "Start with &Windows", Checked: startWithWindows),
         new(SettingsCommand, "Settings (coming later)", Enabled: false),
         TrayMenuItem.Separator,
         new(ExitCommand, "E&xit Tents"),
