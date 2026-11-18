@@ -152,7 +152,7 @@ internal sealed unsafe class DesktopFolderView : IDisposable
                 {
                     try
                     {
-                        if (ToItem(batch[i]) is { } item)
+                        if (DesktopItemFactory.FromIdList(batch[i]) is { } item)
                         {
                             items.Add(item);
                         }
@@ -185,61 +185,6 @@ internal sealed unsafe class DesktopFolderView : IDisposable
     {
         CheckAccess();
         Com.Release(ref _view);
-    }
-
-    // One child of the desktop root. Its ID list is also an absolute ID list, so the shell item is created locally.
-    private static DesktopItem? ToItem(ITEMIDLIST* childOfDesktop)
-    {
-        IShellItem* item = null;
-        try
-        {
-            if (PInvoke.SHCreateItemFromIDList(in *childOfDesktop, out item).Failed)
-            {
-                return null;
-            }
-
-            var id = DesktopItemIdentity.FromParsingName(GetName(item, SIGDN.SIGDN_DESKTOPABSOLUTEPARSING));
-            if (id is null)
-            {
-                return null;
-            }
-
-            const SFGAO_FLAGS wanted = SFGAO_FLAGS.SFGAO_FILESYSTEM | SFGAO_FLAGS.SFGAO_FOLDER;
-            item->GetAttributes(wanted, out var attributes);
-            var displayName = GetName(item, SIGDN.SIGDN_NORMALDISPLAY) ?? id.Value.Value;
-            return new DesktopItem(
-                id.Value,
-                displayName,
-                IsFileSystem: (attributes & SFGAO_FLAGS.SFGAO_FILESYSTEM) != 0,
-                IsFolder: (attributes & SFGAO_FLAGS.SFGAO_FOLDER) != 0,
-                ShellIdList.FromNative(childOfDesktop));
-        }
-        catch (Exception ex) when (ComErrors.IsCallFailure(ex))
-        {
-            return null; // This item could not be read; it is counted as skipped.
-        }
-        finally
-        {
-            Com.Release(ref item);
-        }
-    }
-
-    private static string? GetName(IShellItem* item, SIGDN kind)
-    {
-        PWSTR name = default;
-        try
-        {
-            item->GetDisplayName(kind, &name);
-            return name.ToString();
-        }
-        catch (Exception ex) when (ComErrors.IsCallFailure(ex))
-        {
-            return null; // The item has no name of this kind.
-        }
-        finally
-        {
-            PInvoke.CoTaskMemFree(name.Value);
-        }
     }
 
     private void CheckAccess()

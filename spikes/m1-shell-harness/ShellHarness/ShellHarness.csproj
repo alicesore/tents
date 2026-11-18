@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- THROWAWAY HARNESS for the manual checks of M1 steps 9 and 10. Not part of Tents.sln. See ../README.md. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Tents.Spikes.ShellHarness</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The production shell layer under test. -->
+    <ProjectReference Include="..\..\..\src\Tents.Shell\Tents.Shell.csproj" />
+  </ItemGroup>
+
+</Project>

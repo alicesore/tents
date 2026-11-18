@@ -43,6 +43,26 @@ public sealed class ShellIdList : IEquatable<ShellIdList>
 
     internal ReadOnlySpan<byte> Bytes => _bytes;
 
+    /// <summary>The list without its last entry (the parent folder). The parent of the empty list is the empty list.</summary>
+    public ShellIdList Parent
+    {
+        get
+        {
+            var lastStart = LastEntryOffset();
+            return lastStart < 0 ? Empty : FromBytes([.. _bytes.AsSpan(0, lastStart), 0, 0]);
+        }
+    }
+
+    /// <summary>The last entry alone, as a one-entry list (the child within <see cref="Parent"/>).</summary>
+    public ShellIdList LastItem
+    {
+        get
+        {
+            var lastStart = LastEntryOffset();
+            return lastStart < 0 ? Empty : FromBytes(_bytes.AsSpan(lastStart));
+        }
+    }
+
     /// <summary>Copies an ID list from its serialized form. The bytes must hold one complete list.</summary>
     /// <exception cref="ArgumentException">The bytes are not a well-formed ID list.</exception>
     public static ShellIdList FromBytes(ReadOnlySpan<byte> bytes)
@@ -101,6 +121,17 @@ public sealed class ShellIdList : IEquatable<ShellIdList>
         var hash = new HashCode();
         hash.AddBytes(_bytes);
         return hash.ToHashCode();
+    }
+
+    private int LastEntryOffset()
+    {
+        var last = -1;
+        for (var offset = 0; ReadSize(_bytes, offset) is var size and > 0; offset += size)
+        {
+            last = offset;
+        }
+
+        return last;
     }
 
     private static ushort ReadSize(ReadOnlySpan<byte> bytes, int offset) => (ushort)(bytes[offset] | (bytes[offset + 1] << 8));
