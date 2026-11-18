@@ -30,9 +30,12 @@ jobs:
       - name: Build (Release)
         run: dotnet build Tents.sln -c Release --no-restore
 
+      # Tests that need a signed-in desktop with Explorer are marked Category=Desktop and run by hand
+      # (CONTRIBUTING.md, "Tests that need a desktop").
       - name: Test
         run: >
           dotnet test Tents.sln -c Release --no-build
+          --filter "Category!=Desktop"
           --logger "trx;LogFileName=test-results.trx"
           --results-directory TestResults
 
