@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using Tents.App.Safety;
 using Tents.Shell;
 using Tents.Shell.Hosting;
 
@@ -12,6 +13,15 @@ internal static class Program
     private static int Main(string[] args)
     {
         ShellPlatform.EnsureSupported();
+
+        // The watchdog is this same executable started with --watchdog=...; it loads no WPF and shows nothing.
+        if (WatchedProcess.TryParse(args, out var watched))
+        {
+            return Watchdog.Run(watched);
+        }
+
+        // Crash safety, first layer: the native icons come back even when an exception ends the process.
+        CrashHandler.Install();
         var options = AppOptions.Parse(args);
 
         using var instance = SingleInstance.TryAcquire();
