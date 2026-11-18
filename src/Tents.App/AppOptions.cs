@@ -10,8 +10,9 @@ namespace Tents.App;
 /// in the M2 settings window replaces it.</item>
 /// <item><c>--layout-file=PATH</c>: read and save the layout at PATH instead of <c>%APPDATA%\Tents\layout.json</c>
 /// (for trying things out without touching the real layout).</item>
-/// <item><c>--hide-native-icons</c>: developer flag. Turn the native desktop icons off while tents show the items, and
-/// back on for Pause and Exit. Off by default until crash safety (M1 step 21) is in place.</item>
+/// <item><c>--keep-native-icons</c>: leave the native desktop icons on; tents show next to them and Pause only hides
+/// the tents. By default Tents turns the native icons off while it shows the items (MILESTONES.md M1, "Desktop items"),
+/// with Pause, Exit and the three crash-safety layers (M1 steps 19 and 21) to bring them back.</item>
 /// </list>
 /// </remarks>
 internal sealed record AppOptions
@@ -22,7 +23,7 @@ internal sealed record AppOptions
 
     public const string LayoutFilePrefix = "--layout-file=";
 
-    public const string HideNativeIconsSwitch = "--hide-native-icons";
+    public const string KeepNativeIconsSwitch = "--keep-native-icons";
 
     /// <summary>Largest grid accepted, in pixels.</summary>
     public const int MaxGrid = 200;
@@ -35,8 +36,8 @@ internal sealed record AppOptions
     /// <summary>Snap grid for moving and resizing tents, in physical pixels; 0 (the default) for none.</summary>
     public int SnapGrid { get; init; }
 
-    /// <summary>Turn the native desktop icons off while tents show the items.</summary>
-    public bool HideNativeIcons { get; init; }
+    /// <summary>Turn the native desktop icons off while tents show the items. True unless <c>--keep-native-icons</c>.</summary>
+    public bool HideNativeIcons { get; init; } = true;
 
     /// <summary>The layout file to use, or null for the default.</summary>
     public string? LayoutFile { get; init; }
@@ -56,9 +57,9 @@ internal sealed record AppOptions
             {
                 options = options with { HardwareRendering = true };
             }
-            else if (lower == HideNativeIconsSwitch)
+            else if (lower == KeepNativeIconsSwitch)
             {
-                options = options with { HideNativeIcons = true };
+                options = options with { HideNativeIcons = false };
             }
             else if (lower.StartsWith(GridPrefix, StringComparison.Ordinal)
                 && int.TryParse(lower.AsSpan(GridPrefix.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var grid)

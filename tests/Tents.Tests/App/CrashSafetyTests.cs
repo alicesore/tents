@@ -37,7 +37,7 @@ public sealed class CrashSafetyTests : IDisposable
     public void WatchedProcess_RejectsBadArguments(string arg) => Assert.False(WatchedProcess.TryParse([arg], out _));
 
     [Fact]
-    public void WatchedProcess_NotAWatchdogStart() => Assert.False(WatchedProcess.TryParse(["--hide-native-icons"], out _));
+    public void WatchedProcess_NotAWatchdogStart() => Assert.False(WatchedProcess.TryParse(["--keep-native-icons"], out _));
 
     [Fact]
     public void ShouldRecover_OnlyForTheWatchedProcess_OrAnUnreadableFile()
