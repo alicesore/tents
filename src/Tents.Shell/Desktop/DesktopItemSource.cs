@@ -30,6 +30,37 @@ public sealed class DesktopItemSource : IDisposable
     public Task<DesktopSnapshot> ReadAsync() => InvokeWithViewAsync(view => view.ReadItems());
 
     /// <summary>
+    /// Builds items for paths the file watcher reported before the native view lists them (about 1.3 s later), so a
+    /// tent can show a new file at once. Hidden and system files are left out, as the desktop does by default; paths the
+    /// shell cannot parse (already gone) are skipped. The items' ID lists are absolute, not the view's; the next read of
+    /// the native view replaces them.
+    /// </summary>
+    public Task<IReadOnlyList<DesktopItem>> ResolveAsync(IReadOnlyList<Core.ItemId> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var list = ids.ToList();
+        return _worker.InvokeAsync<IReadOnlyList<DesktopItem>>(() =>
+        {
+            var items = new List<DesktopItem>(list.Count);
+            foreach (var id in list)
+            {
+                if (IsHiddenFile(id.Value))
+                {
+                    continue;
+                }
+
+                if (DesktopItemFactory.FromParsingName(id.Value) is { } item)
+                {
+                    items.Add(item);
+                }
+            }
+
+            return items;
+        });
+    }
+
+    /// <summary>
     /// Drops the current view, so the next read acquires the desktop view of the shell that is running then. Call
     /// after <c>TaskbarCreated</c>. Cheap and never blocks.
     /// </summary>
@@ -73,6 +104,25 @@ public sealed class DesktopItemSource : IDisposable
             ReleaseView();
             _view = DesktopFolderView.TryAcquire() ?? throw new DesktopUnavailableException(ex);
             return work(_view);
+        }
+    }
+
+    /// <summary>True for an existing file or folder with the hidden or system attribute.</summary>
+    internal static bool IsHiddenFile(string path)
+    {
+        try
+        {
+            if (!Path.IsPathFullyQualified(path))
+            {
+                return false; // a virtual item's ::{CLSID} name
+            }
+
+            var attributes = File.GetAttributes(path);
+            return (attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false; // gone or unreadable: the parse below decides
         }
     }
 
