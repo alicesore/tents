@@ -1,6 +1,6 @@
 # Spike 1: desktop layer
 
-Issue: [#2](https://github.com/alicesore/tents/issues/2). Milestone step: `MILESTONES.md` M0 step 11.
+Finished in [#5](https://github.com/alicesore/tents/pull/5). Milestone step: `MILESTONES.md` M0 step 11.
 Prototype (throwaway): `spikes/01-desktop-layer/` and `spikes/common/` on branch `spike/01-desktop-layer`.
 
 ## Question

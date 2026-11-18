@@ -1,6 +1,6 @@
 # Spike 2: desktop items
 
-Issue: [#3](https://github.com/alicesore/tents/issues/3). Milestone step: `MILESTONES.md` M0 step 12.
+Finished in [#6](https://github.com/alicesore/tents/pull/6). Milestone step: `MILESTONES.md` M0 step 12.
 Prototype (throwaway): `spikes/02-desktop-items/` and `spikes/common/` on branch `spike/02-desktop-items`.
 
 ## Question

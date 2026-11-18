@@ -1,6 +1,6 @@
 # Spike 3: performance baseline
 
-Issue: [#4](https://github.com/alicesore/tents/issues/4). Milestone steps: `MILESTONES.md` M0 steps 13 and 14.
+Finished in [#7](https://github.com/alicesore/tents/pull/7). Milestone steps: `MILESTONES.md` M0 steps 13 and 14.
 Prototype (throwaway): `spikes/03-perf-baseline/` and `spikes/common/` on branch `spike/03-perf-baseline`.
 
 ## Question

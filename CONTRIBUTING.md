@@ -68,9 +68,11 @@ dotnet run -c Release --project bench/Tents.Benchmarks -- --filter "*"
 - Fill in the PR template, including the performance and clean-room checklist.
 - Link any outside sources your design relies on (clean-room rule 3).
 
-## Issues
+## Planned work and issues
 
-Use the issue templates: bug, feature, spike (a time-boxed investigation) and performance. Labels: `bug`, `feature`, `performance`, `spike`, `good first issue`, `help wanted`.
+Planned work is tracked in the [Tents roadmap](https://github.com/users/alicesore/projects/1) project: one item for each step in [MILESTONES.md](MILESTONES.md), with its status. A PR for a step names it (for example "Step: M1.5"), and the item is set to Done when the PR is merged. Steps don't get their own issues.
+
+Issues are for things that aren't in the plan yet: bug reports, feature requests, performance problems and proposed spikes. Use the issue templates: bug, feature, spike (a time-boxed investigation) and performance. Labels: `bug`, `feature`, `performance`, `spike`, `good first issue`, `help wanted`.
 
 ## License
 
