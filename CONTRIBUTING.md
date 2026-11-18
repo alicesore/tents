@@ -40,11 +40,19 @@ CI runs the same steps on every push and pull request, and your PR needs to be g
 Some `Tents.Shell` tests talk to Explorer's desktop and need a signed-in Windows session. They carry `[Trait("Category", "Desktop")]` and CI skips them. They only read the desktop: they never change, move, rename or delete anything on it, and they print counts, never the names of your desktop items.
 
 ```powershell
-dotnet test -c Release --filter "Category!=Desktop"   # what CI runs
+dotnet test -c Release --filter "Category!=Desktop&Category!=DesktopChanges"   # what CI runs
 dotnet test -c Release --filter "Category=Desktop"    # needs a desktop session; run before a PR that touches Tents.Shell
 ```
 
 A plain `dotnet test` runs both. Say in your PR which of them you ran.
+
+A third group, `Category=DesktopChanges`, **changes your desktop**: it switches the native desktop icons off and back on for about a second per test. These tests are skipped unless `TENTS_ALLOW_DESKTOP_CHANGES=1` is set, and CI never runs them. Run them only on purpose, with nothing open you mind seeing flicker:
+
+```powershell
+$env:TENTS_ALLOW_DESKTOP_CHANGES = '1'; dotnet test -c Release --filter "Category=DesktopChanges"; Remove-Item Env:TENTS_ALLOW_DESKTOP_CHANGES
+```
+
+Every test turns the icons back on when it ends, also when it fails. If a run is killed while they are off, right-click the desktop > View > Show desktop icons.
 
 ### Solution layout
 

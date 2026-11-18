@@ -35,7 +35,7 @@ jobs:
       - name: Test
         run: >
           dotnet test Tents.sln -c Release --no-build
-          --filter "Category!=Desktop"
+          --filter "Category!=Desktop&Category!=DesktopChanges"
           --logger "trx;LogFileName=test-results.trx"
           --results-directory TestResults
 
