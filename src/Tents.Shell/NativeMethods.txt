@@ -34,3 +34,26 @@ HWND_MESSAGE
 WM_APP
 WM_CLOSE
 WM_DESTROY
+
+// Open and context menu (M1.9).
+ShellExecuteEx
+SHParseDisplayName
+SHGetDesktopFolder
+IShellFolder
+IContextMenu
+IContextMenu2
+IContextMenu3
+CMINVOKECOMMANDINFOEX
+CreatePopupMenu
+DestroyMenu
+TrackPopupMenuEx
+TRACK_POPUP_MENU_FLAGS
+GetMenuItemCount
+GetMenuItemID
+SetForegroundWindow
+IsWindow
+WM_INITMENUPOPUP
+WM_DRAWITEM
+WM_MEASUREITEM
+WM_MENUCHAR
+WM_NULL
