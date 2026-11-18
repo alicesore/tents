@@ -111,3 +111,10 @@ MONITORINFOEXW
 GetDpiForMonitor
 OpenEvent
 GetForegroundWindow
+
+// Tray icon (M1.19): the notification-area icon and its menu.
+Shell_NotifyIcon
+NOTIFYICONDATAW
+CreateIconFromResourceEx
+DestroyIcon
+AppendMenu
