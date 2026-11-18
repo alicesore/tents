@@ -1,7 +1,8 @@
 ## What and why
 
-<!-- Describe the change and link the issue it closes. -->
+<!-- Describe the change. Name the MILESTONES.md step it implements (for example M1.5), or link the issue it fixes. Delete the line you don't need. -->
 
+Step: M
 Closes #
 
 ## How I tested it
