@@ -52,9 +52,16 @@ public sealed class DesktopIconSettingWatcherTests : IDisposable
         Assert.True(watcher.Start());
 
         // Explorer writes the real value from its own process, so check a write from outside the test process too.
+        await RegAddAsync(1);
+
+        Assert.True(await _changed.WaitAsync(_timeout), "A change from another process was not reported.");
+    }
+
+    private async Task RegAddAsync(int value)
+    {
         var regExe = Path.Combine(Environment.SystemDirectory, "reg.exe");
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-            regExe, ["add", $@"HKCU\{_keyPath}", "/v", "HideIcons", "/t", "REG_DWORD", "/d", "1", "/f"])
+            regExe, ["add", $@"HKCU\{_keyPath}", "/v", "HideIcons", "/t", "REG_DWORD", "/d", value.ToString(System.Globalization.CultureInfo.InvariantCulture), "/f"])
         {
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -62,7 +69,16 @@ public sealed class DesktopIconSettingWatcherTests : IDisposable
         })!;
         await process.WaitForExitAsync();
         Assert.Equal(0, process.ExitCode);
+    }
 
+    [Fact]
+    public async Task StartedOnAThreadPoolThread_ChangeFromAnotherProcess_IsReported()
+    {
+        using var watcher = new DesktopIconSettingWatcher(_keyPath);
+        watcher.Changed += (_, _) => _changed.Release();
+        Assert.True(await Task.Run(watcher.Start));
+
+        await RegAddAsync(1);
         Assert.True(await _changed.WaitAsync(_timeout), "A change from another process was not reported.");
     }
 

@@ -16,6 +16,11 @@ namespace Tents.Shell.IconLayer;
 /// it; after each signal the watch is armed again. Other Advanced settings changing also wake it, which is rare and
 /// costs one view read. <c>REG_NOTIFY_THREAD_AGNOSTIC</c> keeps the watch alive when the arming thread is a thread-pool
 /// thread.</para>
+/// <para><b>Does not see Explorer's switch on Windows 11 build 26300.</b> Measured with the DesktopChanges tests:
+/// after the switch <c>HideIcons</c> reads the new value, also through a handle opened before it, but no change
+/// notification arrives, not on this key and not on the whole <c>HKCU\Software</c> tree. Writes from other processes
+/// are reported. Until a different trigger is chosen, the app cannot rely on this watch to notice the user turning the
+/// icons back on.</para>
 /// <para>Source: <see href="https://learn.microsoft.com/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue">RegNotifyChangeKeyValue</see>.</para>
 /// </remarks>
 public sealed class DesktopIconSettingWatcher : IDisposable
