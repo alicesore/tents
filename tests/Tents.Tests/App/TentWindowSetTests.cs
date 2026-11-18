@@ -1,5 +1,6 @@
 using Tents.App;
 using Tents.Core;
+using Tents.Shell.Desktop;
 using Tents.Shell.Hosting;
 
 namespace Tents.Tests.App;
@@ -16,7 +17,7 @@ public sealed class TentWindowSetTests
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out var a, out var b);
 
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
 
         Assert.Equal(2, set.Count);
         Assert.Equal([a, b], _factory.Created.Select(w => w.TentId));
@@ -27,9 +28,9 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out var a, out var b);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
 
-        set.Sync(layout.RenameTent(a, "Renamed").DeleteTent(b));
+        set.Sync(layout.RenameTent(a, "Renamed").DeleteTent(b), NoItems);
 
         Assert.Equal(1, set.Count);
         Assert.Equal(2, _factory.Created.Count); // nothing new
@@ -42,11 +43,11 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out var a, out var b);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
         _host.Results[_factory.Created[0].Handle] = ReattachResult.Reattached;
         _host.Results[_factory.Created[1].Handle] = ReattachResult.WindowGone;
 
-        var summary = set.OnExplorerRestarted(layout);
+        var summary = set.OnExplorerRestarted(layout, NoItems);
 
         Assert.Equal(new ExplorerRestartSummary(Reattached: 1, AlreadyAttached: 0, Recreated: 1, WaitingForDesktop: 0), summary);
         Assert.Equal(3, _factory.Created.Count);
@@ -62,10 +63,10 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out _, out _);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
 
-        var first = set.OnExplorerRestarted(layout);
-        var second = set.OnExplorerRestarted(layout);
+        var first = set.OnExplorerRestarted(layout, NoItems);
+        var second = set.OnExplorerRestarted(layout, NoItems);
 
         Assert.Equal(new ExplorerRestartSummary(0, 2, 0, 0), first);
         Assert.Equal(first, second);
@@ -77,10 +78,10 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out _, out _);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
         _host.Default = ReattachResult.NoDesktop;
 
-        var summary = set.OnExplorerRestarted(layout);
+        var summary = set.OnExplorerRestarted(layout, NoItems);
 
         Assert.Equal(2, summary.WaitingForDesktop);
         Assert.Equal(2, set.Count);
@@ -92,11 +93,11 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out var a, out _);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
 
         set.WindowDestroyed(_factory.Created[0]);
         Assert.Equal(1, set.Count);
-        var summary = set.OnExplorerRestarted(layout);
+        var summary = set.OnExplorerRestarted(layout, NoItems);
 
         Assert.Equal(1, summary.Recreated);
         Assert.True(set.TryGet(a, out var window));
@@ -108,10 +109,10 @@ public sealed class TentWindowSetTests
     {
         var set = new TentWindowSet(_host, _factory);
         var layout = TwoTents(out var a, out _);
-        set.Sync(layout);
+        set.Sync(layout, NoItems);
         var old = _factory.Created[0];
         _host.Results[old.Handle] = ReattachResult.WindowGone;
-        set.OnExplorerRestarted(layout);
+        set.OnExplorerRestarted(layout, NoItems);
 
         set.WindowDestroyed(old); // the old window's late Closed event
 
@@ -123,13 +124,15 @@ public sealed class TentWindowSetTests
     public void CloseAll_ClosesEveryWindow()
     {
         var set = new TentWindowSet(_host, _factory);
-        set.Sync(TwoTents(out _, out _));
+        set.Sync(TwoTents(out _, out _), NoItems);
 
         set.CloseAll();
 
         Assert.Equal(0, set.Count);
         Assert.All(_factory.Created, w => Assert.True(w.Closed));
     }
+
+    private static IReadOnlyList<DesktopItem> NoItems(Tent tent) => [];
 
     private static Layout TwoTents(out TentId a, out TentId b)
     {
@@ -166,7 +169,7 @@ public sealed class TentWindowSetTests
     {
         public List<FakeWindow> Created { get; } = [];
 
-        public ITentWindow Create(Tent tent)
+        public ITentWindow Create(Tent tent, IReadOnlyList<DesktopItem> items)
         {
             var window = new FakeWindow(tent, Created.Count + 1);
             Created.Add(window);
@@ -184,7 +187,11 @@ public sealed class TentWindowSetTests
 
         public nint Handle => Closed ? 0 : handle;
 
-        public void Update(Tent tent) => Tent = tent;
+        public void Update(Tent tent, IReadOnlyList<DesktopItem> items) => Tent = tent;
+
+        public void ClearSelection()
+        {
+        }
 
         public void Close() => Closed = true;
     }

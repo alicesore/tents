@@ -1,4 +1,5 @@
 using Tents.Core;
+using Tents.Shell.Desktop;
 using Tents.Shell.Hosting;
 
 namespace Tents.App;
@@ -12,7 +13,10 @@ internal interface ITentWindow
     nint Handle { get; }
 
     /// <summary>Shows the tent's new state (title, bounds, items).</summary>
-    void Update(Tent tent);
+    void Update(Tent tent, IReadOnlyList<DesktopItem> items);
+
+    /// <summary>Clears the item selection (another tent was clicked).</summary>
+    void ClearSelection();
 
     /// <summary>Closes the window. Safe to call on a window that is already gone.</summary>
     void Close();
@@ -21,7 +25,7 @@ internal interface ITentWindow
 /// <summary>Creates and shows tent windows, attached to the desktop.</summary>
 internal interface ITentWindowFactory
 {
-    ITentWindow Create(Tent tent);
+    ITentWindow Create(Tent tent, IReadOnlyList<DesktopItem> items);
 }
 
 /// <summary>What <see cref="TentWindowSet.OnExplorerRestarted"/> did, for the log.</summary>
@@ -58,9 +62,11 @@ internal sealed class TentWindowSet
     public IEnumerable<ITentWindow> Windows => _windows.Values;
 
     /// <summary>Creates windows for new tents, updates the others, and closes the windows of deleted tents.</summary>
-    public void Sync(Layout layout)
+    /// <param name="itemsOf">The items to show in a tent.</param>
+    public void Sync(Layout layout, Func<Tent, IReadOnlyList<DesktopItem>> itemsOf)
     {
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(itemsOf);
         foreach (var id in _windows.Keys.Where(id => !layout.ContainsTent(id)).ToList())
         {
             _windows.Remove(id, out var window);
@@ -71,11 +77,11 @@ internal sealed class TentWindowSet
         {
             if (_windows.TryGetValue(tent.Id, out var window))
             {
-                window.Update(tent);
+                window.Update(tent, itemsOf(tent));
             }
             else
             {
-                _windows[tent.Id] = _factory.Create(tent);
+                _windows[tent.Id] = _factory.Create(tent, itemsOf(tent));
             }
         }
     }
@@ -91,9 +97,10 @@ internal sealed class TentWindowSet
     }
 
     /// <summary>Re-attaches every window to the new desktop window, and recreates the ones that are gone.</summary>
-    public ExplorerRestartSummary OnExplorerRestarted(Layout layout)
+    public ExplorerRestartSummary OnExplorerRestarted(Layout layout, Func<Tent, IReadOnlyList<DesktopItem>> itemsOf)
     {
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(itemsOf);
         int reattached = 0, already = 0, recreated = 0, waiting = 0;
         foreach (var tent in layout.Tents)
         {
@@ -111,7 +118,7 @@ internal sealed class TentWindowSet
                     break;
                 case ReattachResult.WindowGone:
                     window?.Close();
-                    _windows[tent.Id] = _factory.Create(tent);
+                    _windows[tent.Id] = _factory.Create(tent, itemsOf(tent));
                     recreated++;
                     break;
             }
