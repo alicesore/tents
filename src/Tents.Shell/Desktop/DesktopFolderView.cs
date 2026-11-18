@@ -12,10 +12,10 @@ using ComServiceProvider = Windows.Win32.System.Com.IServiceProvider;
 namespace Tents.Shell.Desktop;
 
 /// <summary>
-/// The desktop's own shell view (<c>IFolderView2</c>), a proxy into Explorer's process. Read-only here: nothing in
-/// this class changes the desktop.
+/// The desktop's own shell view (<c>IFolderView2</c>), a proxy into Explorer's process.
 /// </summary>
 /// <remarks>
+/// <para>Read-only except for <see cref="SetFolderFlags"/>, which only the icon layer switch (M1.8) calls.</para>
 /// <para><b>Route.</b> <c>IShellWindows::FindWindowSW(CSIDL_DESKTOP, SWC_DESKTOP)</c>, then
 /// <c>IServiceProvider::QueryService(SID_STopLevelBrowser)</c> for the desktop's <c>IShellBrowser</c>, then
 /// <c>QueryActiveShellView</c>. Public description: Raymond Chen,
@@ -114,6 +114,16 @@ internal sealed unsafe class DesktopFolderView : IDisposable
         CheckAccess();
         _view->GetCurrentFolderFlags(out var flags);
         return flags;
+    }
+
+    /// <summary>
+    /// Changes the view's <c>FOLDERFLAGS</c> (<c>IFolderView2::SetCurrentFolderFlags</c>). The only call in this class
+    /// that changes the desktop; used solely by <see cref="IconLayer.DesktopIconSwitch"/> for <c>FWF_NOICONS</c>.
+    /// </summary>
+    public void SetFolderFlags(uint mask, uint flags)
+    {
+        CheckAccess();
+        _view->SetCurrentFolderFlags(mask, flags);
     }
 
     /// <summary>Lists every item the view holds, in view order.</summary>

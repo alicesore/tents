@@ -35,6 +35,17 @@ WM_APP
 WM_CLOSE
 WM_DESTROY
 
+// Icons (M1.6): an item's image at an exact pixel size, read back as 32-bit top-down pixels.
+IShellItemImageFactory
+SIIGBF
+SHCreateItemFromParsingName
+GetObject
+BITMAP
+GetDIBits
+CreateCompatibleDC
+DeleteDC
+DeleteObject
+
 // Open and context menu (M1.9).
 ShellExecuteEx
 SHParseDisplayName

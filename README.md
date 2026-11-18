@@ -27,9 +27,11 @@ Tents is a lightweight Windows app that keeps your desktop tidy. Group your desk
 | Multi-monitor and mixed-DPI layouts | M2 |
 | Named layout snapshots, settings UI | M2 |
 | Folder portals: a tent that shows the contents of any folder | M3 |
-| Rules that automatically sort new desktop items into tents | M4 |
-| Desktop pages, search and filtering inside a tent, icon tinting | M5 |
-| Installer, winget package, auto-update | M6 |
+| Live tents: notes (plain Markdown files) and weather, one shared refresh scheduler | M4 |
+| Rules that automatically sort new desktop items into tents | M5 |
+| Desktop pages, search and filtering inside a tent, icon tinting | M6 |
+| Installer, winget package, auto-update | M7 |
+| Calendar and mail tents | M8 |
 
 ## Roadmap
 
@@ -37,9 +39,11 @@ Tents is a lightweight Windows app that keeps your desktop tidy. Group your desk
 - **M1, MVP:** core tents, rollup, saved layout, start with Windows and a tray icon. Released as a portable zip.
 - **M2, Polish:** quick-hide, tent appearance, multi-monitor and DPI support, snapshots, settings.
 - **M3, Folder portals.**
-- **M4, Rules and auto-sort.**
-- **M5, Desktop pages and extras.**
-- **M6, Distribution:** installer, winget and auto-update.
+- **M4, Live tents:** tents that show live content, starting with notes stored as plain Markdown files, then weather, through a shared, idle-friendly refresh scheduler.
+- **M5, Rules and auto-sort.**
+- **M6, Desktop pages and extras.**
+- **M7, Distribution:** installer, winget and auto-update. Releases v1.0.0.
+- **M8, Account-backed tents:** calendar and mail, with their own sign-in, privacy and memory limits. After v1.0.0.
 
 ## Built with
 
