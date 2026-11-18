@@ -60,7 +60,10 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
             Assert.False(await iconSwitch.AreIconsShownAsync());
             Assert.True(file.Exists);
             var hiddenRecord = DesktopIconSettingWatcher.ReadHideIcons();
-            var whileOff = await ItemCountAsync();
+
+            // The first run saw 0 items 7 ms after switching off. Spike 2 saw the list kept while hidden, so measure
+            // whether it comes back while the icons stay off (test only; the guard never reads items).
+            var (offFirst, offBack, offBackAfter) = await WaitForItemCountAsync(items);
 
             clock.Restart();
             Assert.True(await guard.TurnIconsOnAsync());
@@ -69,19 +72,14 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
             Assert.False(file.Exists);
 
             // Spike 2: right after switching on the view lists 0 items for a moment. Measure how long (test only).
-            clock.Restart();
-            var firstRead = await ItemCountAsync();
-            var back = firstRead;
-            while (back != items && clock.Elapsed < TimeSpan.FromSeconds(10))
-            {
-                await Task.Delay(50);
-                back = await ItemCountAsync();
-            }
+            var (onFirst, onBack, onBackAfter) = await WaitForItemCountAsync(items);
 
-            output.WriteLine($"items: {items}; while off: {whileOff}; first read after on: {firstRead}; back to {back} after {clock.ElapsedMilliseconds} ms");
+            output.WriteLine($"items: {items}");
+            output.WriteLine($"while off: first read {offFirst}, then {offBack} after {offBackAfter} ms");
+            output.WriteLine($"after on: first read {onFirst}, then {onBack} after {onBackAfter} ms");
             output.WriteLine($"switch off took {offTook} ms, on took {onTook} ms; HideIcons while off: {hiddenRecord?.ToString() ?? "absent"}, after: {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
-            Assert.Equal(items, whileOff);
-            Assert.Equal(items, back);
+            Assert.Equal(items, offBack);
+            Assert.Equal(items, onBack);
         }
         finally
         {
@@ -125,15 +123,31 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
         using var changed = new SemaphoreSlim(0);
         try
         {
-            await guard.TurnIconsOffAsync();
             watcher.Changed += (_, _) => changed.Release();
             Assert.True(watcher.Start());
 
-            // The same flag the desktop's View > Show desktop icons sets.
+            // The first run switched off and on within a few ms and saw no notification. A user toggles long after
+            // Tents switched off, so first wait for Explorer's own record of "off" (and its notification).
             var clock = Stopwatch.StartNew();
+            await guard.TurnIconsOffAsync();
+            var offNoticed = await changed.WaitAsync(TimeSpan.FromSeconds(5));
+            var offNoticedAfter = clock.ElapsedMilliseconds;
+            var recordAfterOff = DesktopIconSettingWatcher.ReadHideIcons();
+            output.WriteLine($"Tents' switch-off: notified {offNoticed} after {offNoticedAfter} ms; HideIcons then {recordAfterOff?.ToString() ?? "absent"}");
+            while (changed.CurrentCount > 0)
+            {
+                await changed.WaitAsync();
+            }
+
+            Assert.False(await guard.HandleUserTurnedIconsOnAsync()); // Tents' own switch is not the user
+
+            // The same flag the desktop's View > Show desktop icons sets.
+            clock.Restart();
             await iconSwitch.SetIconsShownAsync(true);
-            Assert.True(await changed.WaitAsync(TimeSpan.FromSeconds(10)), "The setting change was not noticed.");
-            output.WriteLine($"setting change noticed after {clock.ElapsedMilliseconds} ms");
+            var onNoticed = await changed.WaitAsync(TimeSpan.FromSeconds(10));
+            output.WriteLine($"user-style switch-on: notified {onNoticed} after {clock.ElapsedMilliseconds} ms; HideIcons then {DesktopIconSettingWatcher.ReadHideIcons()?.ToString() ?? "absent"}");
+            Assert.True(offNoticed, "Tents' own switch-off was not noticed either.");
+            Assert.True(onNoticed, "The setting change was not noticed.");
 
             Assert.True(await guard.HandleUserTurnedIconsOnAsync());
             Assert.False(file.Exists);
@@ -145,6 +159,21 @@ public sealed class DesktopIconToggleTests(ITestOutputHelper output) : IDisposab
     }
 
     private async Task<int> ItemCountAsync() => await _source.InvokeWithViewAsync(view => view.ItemCount());
+
+    // Test-only measurement: re-reads every 50 ms for up to 10 s until the view lists the expected count again.
+    private async Task<(int First, int Last, long AfterMs)> WaitForItemCountAsync(int expected)
+    {
+        var clock = Stopwatch.StartNew();
+        var first = await ItemCountAsync();
+        var last = first;
+        while (last != expected && clock.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            await Task.Delay(50);
+            last = await ItemCountAsync();
+        }
+
+        return (first, last, clock.ElapsedMilliseconds);
+    }
 
     private static async Task EnsureIconsOnAsync(DesktopIconSwitch iconSwitch)
     {
