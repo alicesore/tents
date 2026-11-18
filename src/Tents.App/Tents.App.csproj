@@ -8,6 +8,8 @@
     <RootNamespace>Tents.App</RootNamespace>
     <!-- Workstation non-concurrent GC: no background GC thread (PROJECT_PLAN.md section 7, spike 3). -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <!-- Per-monitor v2 DPI awareness (M1 step 13). -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

@@ -30,6 +30,7 @@ internal sealed class TentWindow : Window, ITentWindow
     private readonly TextBlock _title;
     private Tent _tent;
     private nint _handle;
+    private PixelRect? _placing;
 
     public TentWindow(Tent tent, IDesktopHost host, ITentCommands commands)
     {
@@ -79,9 +80,9 @@ internal sealed class TentWindow : Window, ITentWindow
         _handle = helper.EnsureHandle();
         _host.Prepare(_handle);
         HwndSource.FromHwnd(_handle)!.AddHook(Hook);
-        NativeWindow.SetBounds(_handle, _tent.Bounds);
+        Place(_tent.Bounds);
         Show();
-        NativeWindow.SetBounds(_handle, _tent.Bounds); // WPF may re-apply its own size on the first show.
+        Place(_tent.Bounds); // WPF may re-apply its own size on the first show.
     }
 
     public void Update(Tent tent)
@@ -92,7 +93,32 @@ internal sealed class TentWindow : Window, ITentWindow
         ShowTent(tent);
         if (_handle != 0 && previous.Bounds != tent.Bounds)
         {
-            NativeWindow.SetBounds(_handle, tent.Bounds);
+            Place(tent.Bounds);
+        }
+    }
+
+    /// <summary>
+    /// Moves the window to physical-pixel bounds. A DPI change caused by the move keeps these bounds instead of
+    /// Windows' rescaled suggestion (<see cref="DpiChange"/>).
+    /// </summary>
+    private void Place(PixelRect bounds)
+    {
+        _placing = bounds;
+        try
+        {
+            NativeWindow.SetBounds(_handle, bounds);
+
+            // Belt and braces: if the DPI change was applied before the rewrite above could take effect (WPF's own
+            // handling runs in its HwndTarget hook), the window is now on the target monitor, so a second move does not
+            // change the DPI again and sticks.
+            if (NativeWindow.GetBounds(_handle) is { } actual && actual != bounds)
+            {
+                NativeWindow.SetBounds(_handle, bounds);
+            }
+        }
+        finally
+        {
+            _placing = null;
         }
     }
 
@@ -123,6 +149,13 @@ internal sealed class TentWindow : Window, ITentWindow
 
     private nint Hook(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        if (msg == DpiChange.WmDpiChanged)
+        {
+            // Not handled: WPF rescales the content and applies the (possibly rewritten) rectangle.
+            DpiChange.Apply(lParam, _placing);
+            return 0;
+        }
+
         if (_host.ProcessMessage(hwnd, msg, wParam, lParam, out var result))
         {
             handled = true;
