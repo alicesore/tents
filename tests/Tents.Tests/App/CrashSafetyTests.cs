@@ -7,7 +7,7 @@ namespace Tents.Tests.App;
 
 /// <summary>
 /// Crash safety layers 1 and 2. The icon switch is a fake and the state file lives in a temporary folder, so nothing here
-/// touches the desktop; the "Tents" process a watchdog guards is a short-lived <c>cmd.exe</c>.
+/// touches the desktop; the "Tents" process a watchdog guards is a short-lived <c>ping.exe</c>.
 /// </summary>
 public sealed class CrashSafetyTests : IDisposable
 {
@@ -81,7 +81,8 @@ public sealed class CrashSafetyTests : IDisposable
         StateFile.Write(new IconLayerState(IconLayerState.CurrentVersion, watched.ProcessId, watched.StartTime, DateTimeOffset.UtcNow));
         var iconSwitch = new FakeIconSwitch { Shown = false };
 
-        Assert.True(Watchdog.WaitForExit(watched));
+        Watchdog.WaitForExit(watched); // returns once the "Tents" process is gone (or was already gone)
+        Assert.True(child.WaitForExit(10_000));
         Assert.True(Watchdog.ShouldRecover(StateFile.Read(), watched.ProcessId));
         await Watchdog.RecoverAsync(StateFile, iconSwitch);
 
@@ -149,9 +150,10 @@ public sealed class CrashSafetyTests : IDisposable
         Assert.DoesNotContain("outer", note, StringComparison.Ordinal);
     }
 
+    // Lives about a second (two pings of the loopback address, one second apart), so the watchdog finds it running.
     private static Process StartShortLivedProcess() =>
-        Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0") { UseShellExecute = false, CreateNoWindow = true })
-        ?? throw new InvalidOperationException("cmd.exe did not start.");
+        Process.Start(new ProcessStartInfo("ping.exe", "-n 2 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = false })
+        ?? throw new InvalidOperationException("ping.exe did not start.");
 }
 
 /// <summary>A desktop icon switch that only remembers its state.</summary>
