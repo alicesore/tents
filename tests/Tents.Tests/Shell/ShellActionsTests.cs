@@ -73,7 +73,7 @@ public sealed class ShellActionsTests(ITestOutputHelper output) : IDisposable
         var b = await ItemAsync(CreateFile("b.txt"));
 
         // Parsed one after the other: the folder entry in the two ID lists differs (its date changed), so the shell decides.
-        var (_, children, dropped) = await _actions.InvokeAsync(() => ShellSelection.Group([a.IdList, b.IdList], ShellActions.ContextMenuHandle.SameFolder));
+        var (_, children, dropped) = await _actions.InvokeAsync(() => ShellSelection.Group([a.IdList, b.IdList], ShellFolders.SameFolder));
         var verbs = await _actions.ReadMenuVerbsAsync([a, b]);
 
         Assert.Equal(2, children.Count);

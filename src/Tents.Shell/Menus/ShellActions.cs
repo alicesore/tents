@@ -231,107 +231,14 @@ public sealed unsafe class ShellActions : IDisposable
         }
     }
 
-    /// <summary>The <c>IContextMenu</c> of a selection, with the native memory it needs. Released on dispose.</summary>
-    internal struct ContextMenuHandle : IDisposable
+    /// <summary>The <c>IContextMenu</c> of a selection. Released on dispose.</summary>
+    private struct ContextMenuHandle : IDisposable
     {
         public IContextMenu* Menu;
 
-        public static ContextMenuHandle Create(List<ShellIdList> items, HWND owner, out int dropped)
-        {
-            var (parent, children, droppedCount) = ShellSelection.Group(items, ContextMenuHandle.SameFolder);
-            dropped = droppedCount;
-            IShellFolder* folder = null;
-            var native = new NativeIdLists(children);
-            try
-            {
-                folder = BindToFolder(parent);
-                void* menu;
-                folder->GetUIObjectOf(owner, (uint)children.Count, native.Pointers, IContextMenu.IID_Guid, out menu);
-                return new ContextMenuHandle { Menu = (IContextMenu*)menu };
-            }
-            catch (Exception ex) when (ComErrors.IsCallFailure(ex))
-            {
-                return default;
-            }
-            finally
-            {
-                native.Dispose();
-                Com.Release(ref folder);
-            }
-        }
+        public static ContextMenuHandle Create(List<ShellIdList> items, HWND owner, out int dropped) =>
+            new() { Menu = (IContextMenu*)ShellFolders.GetUIObject(items, owner, IContextMenu.IID_Guid, out dropped) };
 
         public void Dispose() => Com.Release(ref Menu);
-
-        /// <summary>IShellFolder::CompareIDs on the desktop root (SHCIDS_CANONICALONLY): equal when the code part is 0.</summary>
-        internal static bool SameFolder(ShellIdList a, ShellIdList b)
-        {
-            const int canonicalOnly = 0x10000000;
-            IShellFolder* desktop = null;
-            try
-            {
-                PInvoke.SHGetDesktopFolder(&desktop).ThrowOnFailure();
-                fixed (byte* pa = a.Bytes, pb = b.Bytes)
-                {
-                    var hr = desktop->CompareIDs(new LPARAM(canonicalOnly), in *(ITEMIDLIST*)pa, in *(ITEMIDLIST*)pb);
-                    return hr.Succeeded && (short)(hr.Value & 0xFFFF) == 0;
-                }
-            }
-            catch (Exception ex) when (ComErrors.IsCallFailure(ex))
-            {
-                return false;
-            }
-            finally
-            {
-                Com.Release(ref desktop);
-            }
-        }
-
-        private static IShellFolder* BindToFolder(ShellIdList parent)
-        {
-            IShellFolder* desktop;
-            PInvoke.SHGetDesktopFolder(&desktop).ThrowOnFailure();
-            if (parent.ItemCount == 0)
-            {
-                return desktop;
-            }
-
-            try
-            {
-                fixed (byte* pidl = parent.Bytes)
-                {
-                    desktop->BindToObject(in *(ITEMIDLIST*)pidl, null, out IShellFolder* folder);
-                    return folder;
-                }
-            }
-            finally
-            {
-                Com.Release(ref desktop);
-            }
-        }
-    }
-
-    /// <summary>Copies ID lists into native memory, so the shell gets stable <c>ITEMIDLIST*</c> pointers.</summary>
-    private readonly struct NativeIdLists : IDisposable
-    {
-        private readonly void* _block;
-
-        public NativeIdLists(IReadOnlyList<ShellIdList> lists)
-        {
-            var pointerBytes = (nuint)(sizeof(ITEMIDLIST*) * lists.Count);
-            var total = pointerBytes + (nuint)lists.Sum(l => l.Length);
-            _block = NativeMemory.Alloc(total);
-            Pointers = (ITEMIDLIST**)_block;
-            var next = (byte*)_block + pointerBytes;
-            for (var i = 0; i < lists.Count; i++)
-            {
-                lists[i].Bytes.CopyTo(new Span<byte>(next, lists[i].Length));
-                Pointers[i] = (ITEMIDLIST*)next;
-                next += lists[i].Length;
-            }
-        }
-
-        public ITEMIDLIST** Pointers { get; }
-
-        public void Dispose() => NativeMemory.Free(_block);
     }
 }
