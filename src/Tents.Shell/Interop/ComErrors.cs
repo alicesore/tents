@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Tents.Shell.Interop;
 
 /// <summary>HRESULT classification for calls into Explorer's process.</summary>
@@ -25,4 +27,15 @@ public static class ComErrors
     /// </summary>
     public static bool IsDisconnected(int hresult) => hresult is RpcDisconnected or RpcServerDied
         or RpcServerDiedNotExecuted or RpcServerUnavailable or ObjectNotConnected;
+
+    /// <summary>
+    /// True for an exception that a failed HRESULT turns into. CsWin32's <c>ThrowOnFailure</c> uses
+    /// <see cref="Marshal.ThrowExceptionForHR(int)"/>, which maps well-known HRESULTs to specific types (E_INVALIDARG to
+    /// <see cref="ArgumentException"/>, E_NOTIMPL to <see cref="NotImplementedException"/>, E_ACCESSDENIED to
+    /// <see cref="UnauthorizedAccessException"/>, HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) to
+    /// <see cref="FileNotFoundException"/>, and so on), so catching only <see cref="COMException"/> misses them.
+    /// Use it where one item's shell call may fail without failing the whole operation.
+    /// </summary>
+    public static bool IsCallFailure(Exception exception) => exception is COMException or ArgumentException
+        or NotImplementedException or UnauthorizedAccessException or IOException or InvalidCastException;
 }

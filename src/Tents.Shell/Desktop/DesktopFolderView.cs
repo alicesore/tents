@@ -204,7 +204,7 @@ internal sealed unsafe class DesktopFolderView : IDisposable
                 IsFolder: (attributes & SFGAO_FLAGS.SFGAO_FOLDER) != 0,
                 ShellIdList.FromNative(childOfDesktop));
         }
-        catch (COMException)
+        catch (Exception ex) when (ComErrors.IsCallFailure(ex))
         {
             return null; // This item could not be read; it is counted as skipped.
         }
@@ -222,7 +222,7 @@ internal sealed unsafe class DesktopFolderView : IDisposable
             item->GetDisplayName(kind, &name);
             return name.ToString();
         }
-        catch (COMException)
+        catch (Exception ex) when (ComErrors.IsCallFailure(ex))
         {
             return null; // The item has no name of this kind.
         }
