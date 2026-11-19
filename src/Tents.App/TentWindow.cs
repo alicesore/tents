@@ -32,8 +32,11 @@ internal interface ITentCommands
     /// <summary>A drop on a tent finished; <paramref name="insertionIndex"/> is where in the tent it landed.</summary>
     void Dropped(TentId tent, TentDrop drop, int insertionIndex);
 
-    /// <summary>The user moved or resized the tent; <paramref name="bounds"/> are its new physical-pixel bounds.</summary>
+    /// <summary>The user moved or resized the tent; <paramref name="bounds"/> are its new stored bounds.</summary>
     void BoundsChanged(TentId tent, PixelRect bounds);
+
+    /// <summary>The user clicked the title bar without dragging it: roll the tent up or expand it.</summary>
+    void TitleClicked(TentId tent);
 }
 
 /// <summary>
@@ -123,9 +126,9 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         _handle = helper.EnsureHandle();
         _host.Prepare(_handle);
         HwndSource.FromHwnd(_handle)!.AddHook(Hook);
-        Place(_tent.Bounds);
+        Place(WindowBounds(_tent));
         Show();
-        Place(_tent.Bounds); // WPF may re-apply its own size on the first show.
+        Place(WindowBounds(_tent)); // WPF may re-apply its own size on the first show.
         _dropTarget = TentDropTarget.Register(_handle, this);
     }
 
@@ -135,16 +138,16 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         ArgumentNullException.ThrowIfNull(items);
         var previous = _tent;
         _tent = tent;
-        ShowTent(tent);
         // A re-read that changed nothing for this tent must not redraw it (nothing renders unless something changed).
         if (!items.SequenceEqual(_items.Items))
         {
             _items.SetItems(items);
         }
 
-        if (_handle != 0 && previous.Bounds != tent.Bounds)
+        ShowTent(tent);
+        if (_handle != 0 && (previous.Bounds != tent.Bounds || previous.IsRolledUp != tent.IsRolledUp))
         {
-            Place(tent.Bounds);
+            Place(WindowBounds(tent));
         }
     }
 
@@ -300,10 +303,34 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
 
         _drag = null; // before releasing: the release raises LostMouseCapture
         ReleaseMouseCapture();
-        if (drag.Moved && _handle != 0 && NativeWindow.GetBounds(_handle) is { } bounds)
+        if (drag.Moved && _handle != 0 && NativeWindow.GetBounds(_handle) is { } window)
         {
+            var bounds = TentGeometry.StoredBounds(_tent, window);
             _tent = _tent with { Bounds = bounds };
             _commands.BoundsChanged(_tent.Id, bounds);
+        }
+        else if (!drag.Moved && drag.Handle == DragHandle.Move)
+        {
+            _commands.TitleClicked(_tent.Id);
+        }
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+
+        // A rolled-up tent is as tall as its title bar at the monitor's scale; once a placement or drag has finished,
+        // fit it to the new scale.
+        if (_tent.IsRolledUp && _handle != 0)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_tent.IsRolledUp && _handle != 0 && _drag is null && _placing is null && NativeWindow.GetBounds(_handle) is { } window)
+                {
+                    var fitted = TentGeometry.WindowBounds(_tent with { Bounds = TentGeometry.StoredBounds(_tent, window) }, newDpi.DpiScaleX);
+                    Place(fitted);
+                }
+            });
         }
     }
 
@@ -349,7 +376,9 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         }
     }
 
-    private void ShowTent(Tent tent) => _title.Text = tent.Title;
+    private void ShowTent(Tent tent) => _title.Text = TentGeometry.TitleText(tent, _items.Items.Count);
+
+    private PixelRect WindowBounds(Tent tent) => TentGeometry.WindowBounds(tent, VisualTreeHelper.GetDpi(this).DpiScaleX);
 
     private nint Hook(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
