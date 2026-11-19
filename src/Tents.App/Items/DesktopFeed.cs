@@ -36,8 +36,11 @@ internal sealed class DesktopFeed : IAsyncDisposable
         _watcher.NativeViewSettled += (_, _) => _dispatcher.BeginInvoke(RequestRead);
     }
 
-    /// <summary>A full read of the native view finished. Raised on the UI thread.</summary>
-    public event Action<DesktopSnapshot>? SnapshotRead;
+    /// <summary>
+    /// A full read of the native view finished. Raised on the UI thread. For an empty read, the flag says whether the
+    /// desktop folders still have visible entries (then the read is not to be trusted); it is false otherwise.
+    /// </summary>
+    public event Action<DesktopSnapshot, bool>? SnapshotRead;
 
     /// <summary>A watcher batch, with its new paths resolved to items. Raised on the UI thread.</summary>
     public event Action<DesktopChangeBatch, IReadOnlyList<DesktopItem>>? BatchReady;
@@ -93,12 +96,15 @@ internal sealed class DesktopFeed : IAsyncDisposable
                     break;
                 }
 
+                var foldersHaveVisibleEntries = snapshot.Count == 0
+                    && await Task.Run(() => DesktopWatcher.GetDesktopFolders().Any(HasVisibleEntry));
+
                 if (_disposed)
                 {
                     return;
                 }
 
-                SnapshotRead?.Invoke(snapshot);
+                SnapshotRead?.Invoke(snapshot, foldersHaveVisibleEntries);
             }
             while (_readAgain && !_disposed);
         }
@@ -151,6 +157,20 @@ internal sealed class DesktopFeed : IAsyncDisposable
         if (!_disposed)
         {
             BatchReady?.Invoke(batch, added);
+        }
+    }
+
+    /// <summary>True when a folder has an entry that is neither hidden nor a system file. Runs on the thread pool.</summary>
+    internal static bool HasVisibleEntry(string folder)
+    {
+        try
+        {
+            var options = new EnumerationOptions { AttributesToSkip = FileAttributes.Hidden | FileAttributes.System, IgnoreInaccessible = true };
+            return Directory.EnumerateFileSystemEntries(folder, "*", options).Any();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true; // cannot tell: do not trust an empty read
         }
     }
 

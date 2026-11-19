@@ -8,6 +8,8 @@ namespace Tents.App;
 /// M1 step 12 confirms or replaces it.</item>
 /// <item><c>--grid=N</c>: moving and resizing a tent snaps to an N-pixel grid. Off by default (M1 step 14); a setting
 /// in the M2 settings window replaces it.</item>
+/// <item><c>--layout-file=PATH</c>: read and save the layout at PATH instead of <c>%APPDATA%\Tents\layout.json</c>
+/// (for trying things out without touching the real layout).</item>
 /// </list>
 /// </remarks>
 internal sealed record AppOptions
@@ -15,6 +17,8 @@ internal sealed record AppOptions
     public const string HardwareRenderingSwitch = "--hardware-rendering";
 
     public const string GridPrefix = "--grid=";
+
+    public const string LayoutFilePrefix = "--layout-file=";
 
     /// <summary>Largest grid accepted, in pixels.</summary>
     public const int MaxGrid = 200;
@@ -26,6 +30,9 @@ internal sealed record AppOptions
 
     /// <summary>Snap grid for moving and resizing tents, in physical pixels; 0 (the default) for none.</summary>
     public int SnapGrid { get; init; }
+
+    /// <summary>The layout file to use, or null for the default.</summary>
+    public string? LayoutFile { get; init; }
 
     /// <summary>Arguments that were not understood, for the log.</summary>
     public IReadOnlyList<string> Unknown { get; init; } = [];
@@ -47,6 +54,10 @@ internal sealed record AppOptions
                 && grid is > 1 and <= MaxGrid)
             {
                 options = options with { SnapGrid = grid };
+            }
+            else if (lower.StartsWith(LayoutFilePrefix, StringComparison.Ordinal) && arg.Length > LayoutFilePrefix.Length)
+            {
+                options = options with { LayoutFile = arg[LayoutFilePrefix.Length..].Trim('"') };
             }
             else
             {

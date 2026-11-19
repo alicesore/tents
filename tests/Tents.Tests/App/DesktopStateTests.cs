@@ -76,6 +76,41 @@ public sealed class DesktopStateTests
     }
 
     [Fact]
+    public void ARestoredLayout_SurvivesAnEmptyFirstRead()
+    {
+        var restored = DesktopState.Create(Empty().Layout.AssignItems(Ids("a", "b"), _work));
+
+        var state = restored.WithSnapshot(DesktopSnapshot.Empty, out var ignored);
+
+        Assert.True(ignored);
+        Assert.Equal(Ids("a", "b"), state.Layout.GetTent(_work).Items);
+    }
+
+    [Fact]
+    public void ARestoredLayout_DropsItemsDeletedWhileTentsWasNotRunning()
+    {
+        var restored = DesktopState.Create(Empty().Layout.AssignItems(Ids("a", "gone", "b"), _work));
+
+        var state = restored.WithSnapshot(Snapshot("a", "b", "new"), out _);
+
+        Assert.Equal(Ids("a", "b"), state.Layout.GetTent(_work).Items);
+        Assert.Equal(Ids("new"), state.Layout.DefaultTent.Items);
+    }
+
+    [Fact]
+    public void EmptyReads_AreNotTrusted_WhileTheDesktopFoldersHaveVisibleEntries()
+    {
+        var state = Empty().WithSnapshot(Snapshot("a"), out _);
+
+        state = state.WithSnapshot(DesktopSnapshot.Empty, out var first, foldersHaveVisibleEntries: true);
+        state = state.WithSnapshot(DesktopSnapshot.Empty, out var second, foldersHaveVisibleEntries: true);
+
+        Assert.True(first);
+        Assert.True(second);
+        Assert.Equal(Ids("a"), state.Layout.DefaultTent.Items);
+    }
+
+    [Fact]
     public void Batch_RemovesDeletedItemsAtOnce()
     {
         var state = Empty().WithSnapshot(Snapshot("a", "b"), out _);

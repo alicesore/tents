@@ -13,8 +13,8 @@ namespace Tents.App.Items;
 /// exist. Watcher batches (<see cref="WithBatch"/>) arrive about 1.3 s earlier and are applied at once, so a new or
 /// deleted file shows in its tent immediately; the next full read corrects anything the watcher saw differently.</para>
 /// <para><b>An empty read is not trusted</b> when items were known: the native view lists 0 items for about 60 ms after
-/// the icon switch flips and while Explorer restarts. Reconciling from such a read would throw every item out of its
-/// tent. Such a read is ignored; the next one decides.</para>
+/// the icon switch flips, while Explorer restarts, and possibly early at sign-in. Reconciling from such a read would throw
+/// every item out of its tent, and with a restored layout that loss would be saved. Such a read is ignored.</para>
 /// <para><b>Drops from outside</b> (Explorer onto a tent) put files on the desktop through the shell; the new desktop
 /// items should land in the tent they were dropped on. <see cref="ExpectItems"/> records the expected ids; they go to
 /// that tent when they appear, instead of the default tent.</para>
@@ -75,13 +75,16 @@ internal sealed class DesktopState
     }
 
     /// <summary>
-    /// Applies a full read of the native view. An empty read while items are known is ignored once (see remarks); a
-    /// second empty read in a row is trusted, so a desktop that really became empty is shown as empty.
+    /// Applies a full read of the native view. An empty read while items are known (on the desktop or in a restored
+    /// layout) is ignored (see remarks). It is trusted only when the read before it was empty too and the desktop folders
+    /// have no visible entries (<paramref name="foldersHaveVisibleEntries"/>), so a desktop that really became empty is
+    /// shown as empty.
     /// </summary>
-    public DesktopState WithSnapshot(DesktopSnapshot snapshot, out bool ignored)
+    public DesktopState WithSnapshot(DesktopSnapshot snapshot, out bool ignored, bool foldersHaveVisibleEntries = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        ignored = snapshot.Count == 0 && !Items.IsEmpty && !LastReadWasEmpty;
+        var known = !Items.IsEmpty || Layout.ItemCount > 0;
+        ignored = snapshot.Count == 0 && known && (!LastReadWasEmpty || foldersHaveVisibleEntries);
         if (ignored)
         {
             return new DesktopState(Layout, Items, Expected, lastReadWasEmpty: true);
