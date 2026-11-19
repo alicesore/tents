@@ -55,9 +55,10 @@ public sealed class AppOptionsTests
     }
 
     [Fact]
-    public void HideNativeIcons_IsADeveloperOptIn()
+    public void NativeIcons_AreSwitchedOffByDefault_WithAnOptOut()
     {
-        Assert.False(AppOptions.Parse([]).HideNativeIcons);
-        Assert.True(AppOptions.Parse(["--hide-native-icons"]).HideNativeIcons);
+        Assert.True(AppOptions.Parse([]).HideNativeIcons);
+        Assert.False(AppOptions.Parse(["--keep-native-icons"]).HideNativeIcons);
+        Assert.Equal(["--hide-native-icons"], AppOptions.Parse(["--hide-native-icons"]).Unknown); // the old developer flag is gone
     }
 }

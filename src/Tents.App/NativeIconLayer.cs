@@ -9,9 +9,8 @@ namespace Tents.App;
 /// <remarks>
 /// <para><b>Recovery always runs</b>, also while switching is disabled: if an earlier Tents died with the icons off, they
 /// come back at the next start.</para>
-/// <para><b>Switching</b> only happens when <see cref="SwitchingEnabled"/> is true (the <c>--hide-native-icons</c>
-/// developer flag in this step; on by default once crash safety, M1 step 21, is in place). Otherwise tents show next to
-/// the native icons and Pause only hides the tents.</para>
+/// <para><b>Switching</b> happens when <see cref="SwitchingEnabled"/> is true, the default; <c>--keep-native-icons</c>
+/// turns it off, and then tents show next to the native icons and Pause only hides the tents.</para>
 /// <para>Every call awaits the guard, which runs on the desktop view's own thread; the UI thread never blocks. Failures
 /// (no desktop view while Explorer restarts) are logged and leave the icons as they are.</para>
 /// </remarks>

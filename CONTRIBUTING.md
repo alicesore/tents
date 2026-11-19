@@ -54,6 +54,25 @@ $env:TENTS_ALLOW_DESKTOP_CHANGES = '1'; dotnet test -c Release --filter "Categor
 
 Every test turns the icons back on when it ends, also when it fails. If a run is killed while they are off, right-click the desktop > View > Show desktop icons.
 
+### Running the app
+
+```powershell
+dotnet run --project src/Tents.App -c Release
+```
+
+**This changes your desktop.** Tents reads your desktop items, shows them in tents, and turns the native desktop icons off (the same switch as right-click desktop > View > Show desktop icons). Exit (tray icon > Exit Tents) and Pause (tray icon > Show Windows desktop icons) turn them back on. If Tents crashes or is killed, its watchdog process turns them back on, and so does the next start; by hand, right-click the desktop > View > Show desktop icons. Tents never moves, renames or deletes your files; only a command you choose in a shell menu, or a drop you make, does, as on the desktop.
+
+Options for trying things out:
+
+| Option | Effect |
+|---|---|
+| `--keep-native-icons` | Leave the native icons on; tents show next to them. |
+| `--layout-file=PATH` | Use another layout file instead of `%APPDATA%\Tents\layout.json`. |
+| `--grid=N` | Snap moves and resizes to an N-pixel grid. |
+| `--hardware-rendering` | WPF's GPU rendering instead of software rendering. |
+
+Pass them after `--`, for example `dotnet run --project src/Tents.App -c Release -- --keep-native-icons`. The log is `%LOCALAPPDATA%\Tents\tents.log`.
+
 ### Solution layout
 
 | Project | Purpose |
