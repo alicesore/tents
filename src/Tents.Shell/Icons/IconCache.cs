@@ -124,6 +124,27 @@ public sealed class IconCache : IDisposable
     }
 
     /// <summary>Counts for diagnostics and the memory budget.</summary>
+    /// <summary>
+    /// Unloads the in-process shell handlers (icon and thumbnail providers) that the icon thread loaded and no longer
+    /// uses, so their code leaves the working set until an icon needs them again. COM unloads a server only when it
+    /// reports that none of its objects are alive (<c>DllCanUnloadNow</c>), which is what Explorer relies on too. Runs on
+    /// the icon thread, which loaded them. Source:
+    /// <see href="https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-cofreeunusedlibrariesex">CoFreeUnusedLibrariesEx</see>.
+    /// </summary>
+    public Task ReleaseUnusedHandlersAsync()
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+        }
+
+        return _worker.InvokeAsync(static () =>
+        {
+            Windows.Win32.PInvoke.CoFreeUnusedLibrariesEx(0, 0);
+            return true;
+        });
+    }
+
     public IconCacheStatistics GetStatistics()
     {
         lock (_gate)

@@ -20,10 +20,12 @@ internal sealed class DesktopFeed : IAsyncDisposable
     private readonly DesktopWatcher _watcher;
     private readonly Dispatcher _dispatcher;
     private readonly AppLog _log;
+    private readonly IReadOnlyList<string> _folders;
     private bool _reading;
     private bool _readAgain;
     private bool _disposed;
 
+    /// <summary>Watches the desktop folders, or only the source's stand-in folder when it has one.</summary>
     public DesktopFeed(DesktopItemSource source, AppLog log)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -31,7 +33,8 @@ internal sealed class DesktopFeed : IAsyncDisposable
         _source = source;
         _log = log;
         _dispatcher = Dispatcher.CurrentDispatcher;
-        _watcher = new DesktopWatcher(DesktopWatcher.GetDesktopFolders());
+        _folders = source.Folder is { } folder ? [folder] : DesktopWatcher.GetDesktopFolders();
+        _watcher = new DesktopWatcher(_folders);
         _watcher.ChangesReady += (_, batch) => _dispatcher.BeginInvoke(() => OnBatch(batch));
         _watcher.NativeViewSettled += (_, _) => _dispatcher.BeginInvoke(RequestRead);
     }
@@ -97,7 +100,7 @@ internal sealed class DesktopFeed : IAsyncDisposable
                 }
 
                 var foldersHaveVisibleEntries = snapshot.Count == 0
-                    && await Task.Run(() => DesktopWatcher.GetDesktopFolders().Any(HasVisibleEntry));
+                    && await Task.Run(() => _folders.Any(HasVisibleEntry));
 
                 if (_disposed)
                 {

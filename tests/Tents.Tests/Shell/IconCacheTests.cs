@@ -185,6 +185,15 @@ public sealed class IconCacheTests : IDisposable
         return new IconImage(size, size, pixels, AlphaKind.Premultiplied);
     }
 
+    [Fact]
+    public async Task ReleaseUnusedHandlers_RunsOnTheIconThread_AndNotAfterDispose()
+    {
+        await _cache.ReleaseUnusedHandlersAsync();
+
+        _cache.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(_cache.ReleaseUnusedHandlersAsync);
+    }
+
     private sealed class FakeIconSource : IIconSource
     {
         private readonly ConcurrentDictionary<(ItemId, int), IconImage?> _images = new();

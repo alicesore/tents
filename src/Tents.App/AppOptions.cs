@@ -13,6 +13,11 @@ namespace Tents.App;
 /// <item><c>--keep-native-icons</c>: leave the native desktop icons on; tents show next to them and Pause only hides
 /// the tents. By default Tents turns the native icons off while it shows the items (MILESTONES.md M1, "Desktop items"),
 /// with Pause, Exit and the three crash-safety layers (M1 steps 19 and 21) to bring them back.</item>
+/// <item><c>--desktop-folder=PATH</c>: a measurement and test seam (M1 step 22). Tents shows the items of the folder at
+/// PATH instead of the desktop's, and never touches the native desktop: it implies <c>--keep-native-icons</c>, skips the
+/// icon-layer recovery and the watchdog, and the crash handler leaves the icons alone. Not for everyday use: a file
+/// dropped onto a tent still goes to the real Desktop folder, as in normal use.</item>
+/// <item><c>--log-file=PATH</c>: write the log to PATH instead of <c>%LOCALAPPDATA%\Tents\tents.log</c>.</item>
 /// </list>
 /// </remarks>
 internal sealed record AppOptions
@@ -24,6 +29,10 @@ internal sealed record AppOptions
     public const string LayoutFilePrefix = "--layout-file=";
 
     public const string KeepNativeIconsSwitch = "--keep-native-icons";
+
+    public const string DesktopFolderPrefix = "--desktop-folder=";
+
+    public const string LogFilePrefix = "--log-file=";
 
     /// <summary>Largest grid accepted, in pixels.</summary>
     public const int MaxGrid = 200;
@@ -41,6 +50,15 @@ internal sealed record AppOptions
 
     /// <summary>The layout file to use, or null for the default.</summary>
     public string? LayoutFile { get; init; }
+
+    /// <summary>A folder whose items Tents shows instead of the desktop's, or null for the desktop (the default).</summary>
+    public string? DesktopFolder { get; init; }
+
+    /// <summary>The log file to use, or null for the default.</summary>
+    public string? LogFile { get; init; }
+
+    /// <summary>True when Tents may read or change the native desktop's icon layer: always, unless a folder stands in.</summary>
+    public bool UsesNativeDesktop => DesktopFolder is null;
 
     /// <summary>Arguments that were not understood, for the log.</summary>
     public IReadOnlyList<string> Unknown { get; init; } = [];
@@ -71,10 +89,24 @@ internal sealed record AppOptions
             {
                 options = options with { LayoutFile = arg[LayoutFilePrefix.Length..].Trim('"') };
             }
+            else if (lower.StartsWith(DesktopFolderPrefix, StringComparison.Ordinal) && arg.Length > DesktopFolderPrefix.Length)
+            {
+                options = options with { DesktopFolder = Path.GetFullPath(arg[DesktopFolderPrefix.Length..].Trim('"')) };
+            }
+            else if (lower.StartsWith(LogFilePrefix, StringComparison.Ordinal) && arg.Length > LogFilePrefix.Length)
+            {
+                options = options with { LogFile = arg[LogFilePrefix.Length..].Trim('"') };
+            }
             else
             {
                 unknown.Add(arg);
             }
+        }
+
+        // A stand-in folder never touches the native desktop, so the icons stay on.
+        if (options.DesktopFolder is not null)
+        {
+            options = options with { HideNativeIcons = false };
         }
 
         return options with { Unknown = unknown };

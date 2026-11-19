@@ -49,6 +49,9 @@ internal interface ITentCommands
 
     /// <summary>False for the default tent, which cannot be deleted.</summary>
     bool CanDelete(TentId tent);
+
+    /// <summary>The tent drew something (items, icons, a new size): work happened that may have allocated.</summary>
+    void Activity();
 }
 
 /// <summary>
@@ -229,6 +232,8 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     // ---- IItemViewHost ----
 
     public void ItemViewClicked() => _commands.TentClicked(_tent.Id);
+
+    public void ViewRendered() => _commands.Activity();
 
     public void OpenItem(DesktopItem item) => _commands.Open(item);
 
