@@ -24,13 +24,16 @@ internal static class CrashHandler
     public static readonly TimeSpan RestoreTimeout = TimeSpan.FromSeconds(3);
 
     private static int _handled;
+    private static bool _restoreIcons = true;
 
     /// <summary>The crash note, next to the log.</summary>
     public static string CrashNotePath => Path.Combine(Path.GetDirectoryName(AppLog.DefaultFilePath)!, "crash.txt");
 
     /// <summary>Installs the handler for this process. Call once, first thing in Main.</summary>
-    public static void Install()
+    /// <param name="restoreIcons">False when this run never touches the native desktop (<c>--desktop-folder</c>).</param>
+    public static void Install(bool restoreIcons = true)
     {
+        _restoreIcons = restoreIcons;
         AppDomain.CurrentDomain.UnhandledException += (_, e) => OnUnhandled(e.ExceptionObject as Exception);
     }
 
@@ -44,7 +47,10 @@ internal static class CrashHandler
 
         try
         {
-            RestoreIcons(new IconLayerStateFile(), static source => new DesktopIconSwitch(source));
+            if (_restoreIcons)
+            {
+                RestoreIcons(new IconLayerStateFile(), static source => new DesktopIconSwitch(source));
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

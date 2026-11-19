@@ -42,6 +42,31 @@ public sealed class DesktopItemResolveTests : IDisposable
         Assert.False(item.IsFolder);
     }
 
+    [Fact]
+    public async Task FolderSource_ListsTheFoldersVisibleEntries_SortedByName()
+    {
+        var b = Create("b.txt");
+        var a = Create("A.md");
+        Create("hidden.txt", FileAttributes.Hidden);
+        var sub = Directory.CreateDirectory(Path.Combine(_folder, "c folder")).FullName;
+        using var source = DesktopItemSource.ForFolder(_folder);
+
+        var snapshot = await source.ReadAsync();
+
+        Assert.Equal(Path.GetFullPath(_folder), source.Folder);
+        Assert.Equal([new ItemId(a), new ItemId(b), new ItemId(sub)], snapshot.Items.Select(i => i.Id));
+        Assert.True(snapshot.Items[2].IsFolder);
+        Assert.Equal(0, snapshot.SkippedCount);
+    }
+
+    [Fact]
+    public async Task FolderSource_NeverTouchesTheDesktopView()
+    {
+        using var source = DesktopItemSource.ForFolder(_folder);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => source.InvokeWithViewAsync(_ => 0));
+    }
+
     private string Create(string name, FileAttributes attributes = FileAttributes.Normal)
     {
         var path = Path.Combine(_folder, name);

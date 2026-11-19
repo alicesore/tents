@@ -22,7 +22,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private readonly AppOptions _options;
     private readonly AppLog _log;
     private readonly IDesktopHost _host;
-    private readonly DesktopItemSource _source = new();
+    private readonly DesktopItemSource _source;
     private readonly IconCache _icons = new();
     private readonly ShellActions _actions = new();
     private DesktopFeed? _feed;
@@ -50,6 +50,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _options = options;
         _log = log;
         _host = host;
+        _source = options.DesktopFolder is { } folder ? DesktopItemSource.ForFolder(folder) : new DesktopItemSource();
     }
 
     /// <summary>
@@ -73,16 +74,24 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
             _log.Write("No taskbar yet; the tray icon is added on TaskbarCreated.");
         }
 
-        // An earlier run that died with the native icons off is cleaned up first, whatever this run does.
-        _guard = new IconLayerGuard(new DesktopIconSwitch(_source), new IconLayerStateFile());
-        _iconLayer = new NativeIconLayer(_guard, _log, _options.HideNativeIcons);
-        await _iconLayer.RecoverAsync();
-
-        // Crash safety, second layer: a watchdog process restores the icons if this one is killed. Only needed when
-        // this run may turn them off.
-        if (_iconLayer.SwitchingEnabled)
+        if (_options.UsesNativeDesktop)
         {
-            Safety.Watchdog.Launch(_log);
+            // An earlier run that died with the native icons off is cleaned up first, whatever this run does.
+            _guard = new IconLayerGuard(new DesktopIconSwitch(_source), new IconLayerStateFile());
+            _iconLayer = new NativeIconLayer(_guard, _log, _options.HideNativeIcons);
+            await _iconLayer.RecoverAsync();
+
+            // Crash safety, second layer: a watchdog process restores the icons if this one is killed. Only needed when
+            // this run may turn them off.
+            if (_iconLayer.SwitchingEnabled)
+            {
+                Safety.Watchdog.Launch(_log);
+            }
+        }
+        else
+        {
+            // --desktop-folder: a stand-in folder; the native desktop's icon layer is never read or changed.
+            _log.Write("Showing a stand-in folder instead of the desktop; the native icons are left alone.");
         }
 
         _persistence = new LayoutPersistence(new LayoutFileStore(_options.LayoutFile ?? LayoutFileStore.DefaultFilePath), _log);
@@ -100,7 +109,8 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _savedLayout = choice == LayoutChoice.Saved && moved == 0 ? layout : null; // anything else is saved once
         _windows = new TentWindowSet(_host, this);
         SyncWindows();
-        _log.Write($"Showing {_windows.Count} tent(s) on {monitors.Count} monitor(s); native icons {(_iconLayer.SwitchingEnabled ? "switched off once the items are read" : "left on")}.");
+        LogFirstFrames();
+        _log.Write($"Showing {_windows.Count} tent(s) on {monitors.Count} monitor(s); native icons {(_iconLayer?.SwitchingEnabled == true ? "switched off once the items are read" : "left on")}.");
 
         // Items arrive asynchronously; the tents are on screen before the first read finishes.
         _feed = new DesktopFeed(_source, _log);
@@ -444,7 +454,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     /// </summary>
     public async void SetPaused(bool paused, string reason)
     {
-        if (_shuttingDown || paused == _paused || _windows is null || _iconLayer is null)
+        if (_shuttingDown || paused == _paused || _windows is null)
         {
             return;
         }
@@ -454,7 +464,11 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _tray?.SetTooltip(TrayText.Tooltip(paused));
         if (paused)
         {
-            await _iconLayer.ShowNativeIconsAsync();
+            if (_iconLayer is not null)
+            {
+                await _iconLayer.ShowNativeIconsAsync();
+            }
+
             if (_paused && !_shuttingDown)
             {
                 _windows.SetVisible(false);
@@ -468,7 +482,35 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         else
         {
             _windows.SetVisible(true);
-            await _iconLayer.HideNativeIconsAsync();
+            if (_iconLayer is not null)
+            {
+                await _iconLayer.HideNativeIconsAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs, once, how long after process start every tent had drawn its first frame: the warm-startup budget in
+    /// PROJECT_PLAN.md section 7, read by the idle check (M1 step 22). Costs one handler per window, removed after it ran.
+    /// </summary>
+    private void LogFirstFrames()
+    {
+        var windows = _windows?.Windows.OfType<Window>().ToList() ?? [];
+        var left = windows.Count;
+        foreach (var window in windows)
+        {
+            window.ContentRendered += OnRendered;
+        }
+
+        void OnRendered(object? sender, EventArgs e)
+        {
+            ((Window)sender!).ContentRendered -= OnRendered;
+            if (--left == 0)
+            {
+                using var process = System.Diagnostics.Process.GetCurrentProcess();
+                var elapsed = DateTime.Now - process.StartTime;
+                _log.Write(FormattableString.Invariant($"First frame: {windows.Count} tent(s) drawn {elapsed.TotalMilliseconds:F0} ms after process start."));
+            }
         }
     }
 
