@@ -18,6 +18,8 @@ namespace Tents.Tests.Shell;
 /// <see cref="DesktopWatcherOptions.CoalesceDelay"/> after it: here both are 300 ms, so an event that opens a new
 /// coalesce window can settle and be batched at the same moment. Tests therefore also wait for the batches they assert
 /// on (<see cref="WaitForBatchesMentioningAsync"/>).</para>
+/// <para>A burst whose batch count is asserted is made of fast metadata operations, so its length does not depend on
+/// how quickly the runner creates files.</para>
 /// </remarks>
 public sealed class DesktopWatcherFileSystemTests : IAsyncLifetime, IAsyncDisposable
 {
@@ -63,14 +65,34 @@ public sealed class DesktopWatcherFileSystemTests : IAsyncLifetime, IAsyncDispos
         }
     }
 
+    /// <remarks>
+    /// The burst must fit in two coalesce windows (600 ms here) to be two batches at most, so how long it takes must not
+    /// depend on the runner. The files are written beside the watched folder before the watcher starts, and the burst
+    /// moves them in: 20 synchronous renames on one volume, with no file creation or flush and no awaits that a busy
+    /// test scheduler could delay. Each still arrives as a new file.
+    /// </remarks>
     [Fact]
     public async Task TwentyNewFiles_ArriveInAtMostTwoBatches()
     {
-        StartWatching();
-        var files = Enumerable.Range(0, 20).Select(i => Path.Combine(_folder, $"file-{i:D2}.txt")).ToList();
-        foreach (var file in files)
+        var names = Enumerable.Range(0, 20).Select(i => $"file-{i:D2}.txt").ToList();
+        var files = names.Select(n => Path.Combine(_folder, n)).ToList();
+        var staging = Directory.CreateTempSubdirectory("tents-watch-staging-").FullName;
+        try
         {
-            await File.WriteAllTextAsync(file, "x");
+            foreach (var name in names)
+            {
+                await File.WriteAllTextAsync(Path.Combine(staging, name), "x");
+            }
+
+            StartWatching();
+            foreach (var name in names)
+            {
+                File.Move(Path.Combine(staging, name), Path.Combine(_folder, name));
+            }
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
         }
 
         await WaitForSettledAsync();
