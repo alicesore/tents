@@ -20,12 +20,16 @@ public class CoreBoundaryTests
         "Tents.App",
     ];
 
+    // The app's assembly is named after the product (Tents.exe), so it is not caught by the Tents.App prefix.
+    private const string _appAssemblyName = "Tents";
+
     [Fact]
     public void CoreAssembly_DoesNotReferenceUiOrWin32Assemblies()
     {
         var references = typeof(Layout).Assembly.GetReferencedAssemblies()
             .Select(a => a.Name ?? string.Empty)
-            .Where(name => _forbiddenAssemblyPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            .Where(name => _forbiddenAssemblyPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(name, _appAssemblyName, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         Assert.Empty(references);

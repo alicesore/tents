@@ -92,3 +92,21 @@ FORMATETC
 STGMEDIUM
 TYMED
 DVASPECT
+
+// Desktop host (M1.11): tent windows owned by the shell's desktop window and pinned to the bottom, and the
+// controller window's notifications.
+GetShellWindow
+GetWindowLongPtr
+SetWindowLongPtr
+GetWindow
+SetWindowPos
+WINDOWPOS
+RegisterWindowMessage
+WTSRegisterSessionNotification
+WTSUnRegisterSessionNotification
+GetWindowRect
+EnumDisplayMonitors
+GetMonitorInfo
+MONITORINFOEXW
+GetDpiForMonitor
+OpenEvent
