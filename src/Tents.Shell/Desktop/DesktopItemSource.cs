@@ -21,13 +21,44 @@ namespace Tents.Shell.Desktop;
 public sealed class DesktopItemSource : IDisposable
 {
     private readonly StaWorker _worker = new("Tents desktop view");
+    private readonly string? _folder;
     private DesktopFolderView? _view; // Owned by the worker thread.
     private int _invalidated;
     private bool _disposed;
 
-    /// <summary>Reads every item the desktop shows.</summary>
+    /// <summary>A source for the desktop's native view.</summary>
+    public DesktopItemSource()
+    {
+    }
+
+    private DesktopItemSource(string folder) => _folder = folder;
+
+    /// <summary>
+    /// A stand-in source for measurement and tests: lists the visible entries of <paramref name="folder"/>, sorted by
+    /// name, instead of the desktop's view. It never acquires the desktop view, so nothing built on it can read or
+    /// change the native desktop.
+    /// </summary>
+    public static DesktopItemSource ForFolder(string folder)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(folder);
+        return new DesktopItemSource(Path.GetFullPath(folder));
+    }
+
+    /// <summary>The stand-in folder, or null for the desktop's native view.</summary>
+    public string? Folder => _folder;
+
+    /// <summary>Reads every item the desktop (or the stand-in folder) shows.</summary>
     /// <exception cref="DesktopUnavailableException">The shell has no desktop window right now.</exception>
-    public Task<DesktopSnapshot> ReadAsync() => InvokeWithViewAsync(view => view.ReadItems());
+    public Task<DesktopSnapshot> ReadAsync()
+    {
+        if (_folder is not { } folder)
+        {
+            return InvokeWithViewAsync(view => view.ReadItems());
+        }
+
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _worker.InvokeAsync(() => ReadFolder(folder));
+    }
 
     /// <summary>
     /// Builds items for paths the file watcher reported before the native view lists them (about 1.3 s later), so a
@@ -67,11 +98,38 @@ public sealed class DesktopItemSource : IDisposable
     public void InvalidateView() => Volatile.Write(ref _invalidated, 1);
 
     /// <summary>Runs <paramref name="work"/> on the shell thread with a live view.</summary>
+    /// <exception cref="InvalidOperationException">This is a stand-in folder source, which has no desktop view.</exception>
     internal Task<T> InvokeWithViewAsync<T>(Func<DesktopFolderView, T> work)
     {
         ArgumentNullException.ThrowIfNull(work);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_folder is not null)
+        {
+            throw new InvalidOperationException("A stand-in folder source never touches the desktop's view.");
+        }
+
         return _worker.InvokeAsync(() => WithView(work));
+    }
+
+    /// <summary>The visible entries of a folder as items, sorted by name. Call on an STA thread.</summary>
+    internal static DesktopSnapshot ReadFolder(string folder)
+    {
+        var options = new EnumerationOptions { AttributesToSkip = FileAttributes.Hidden | FileAttributes.System, IgnoreInaccessible = true };
+        var items = new List<DesktopItem>();
+        var skipped = 0;
+        foreach (var path in Directory.EnumerateFileSystemEntries(folder, "*", options).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            if (DesktopItemFactory.FromParsingName(path) is { } item)
+            {
+                items.Add(item);
+            }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        return new DesktopSnapshot(items, skipped);
     }
 
     public void Dispose()

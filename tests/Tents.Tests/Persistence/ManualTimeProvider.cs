@@ -34,6 +34,11 @@ internal sealed class ManualTimeProvider : TimeProvider, IDisposable
         }
     }
 
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    /// <summary>Timestamps follow the manual clock too, so elapsed-time checks only move with <see cref="Advance"/>.</summary>
+    public override long GetTimestamp() => GetUtcNow().UtcTicks;
+
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
         var timer = new ManualTimer(this, callback, state);

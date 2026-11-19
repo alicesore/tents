@@ -61,4 +61,29 @@ public sealed class AppOptionsTests
         Assert.False(AppOptions.Parse(["--keep-native-icons"]).HideNativeIcons);
         Assert.Equal(["--hide-native-icons"], AppOptions.Parse(["--hide-native-icons"]).Unknown); // the old developer flag is gone
     }
+
+    [Fact]
+    public void DesktopFolder_IsAFullPath_AndKeepsTheNativeIcons()
+    {
+        var plain = AppOptions.Parse([]);
+        Assert.Null(plain.DesktopFolder);
+        Assert.True(plain.UsesNativeDesktop);
+
+        var options = AppOptions.Parse([@"--desktop-folder=""D:\Bench\Items"""]);
+
+        Assert.Equal(@"D:\Bench\Items", options.DesktopFolder);
+        Assert.False(options.UsesNativeDesktop);
+        Assert.False(options.HideNativeIcons);
+        Assert.Empty(options.Unknown);
+    }
+
+    [Fact]
+    public void DesktopFolder_WithoutAPath_IsUnknown() => Assert.Equal(["--desktop-folder="], AppOptions.Parse(["--desktop-folder="]).Unknown);
+
+    [Fact]
+    public void LogFile_IsTakenAsGiven()
+    {
+        Assert.Null(AppOptions.Parse([]).LogFile);
+        Assert.Equal(@"D:\Bench\tents.log", AppOptions.Parse([@"--LOG-FILE=D:\Bench\tents.log"]).LogFile);
+    }
 }

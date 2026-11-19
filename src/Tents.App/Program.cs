@@ -20,9 +20,10 @@ internal static class Program
             return Watchdog.Run(watched);
         }
 
-        // Crash safety, first layer: the native icons come back even when an exception ends the process.
-        CrashHandler.Install();
+        // Crash safety, first layer: the native icons come back even when an exception ends the process. A stand-in
+        // folder (--desktop-folder) never touches them, so then the handler only writes the crash note.
         var options = AppOptions.Parse(args);
+        CrashHandler.Install(restoreIcons: options.UsesNativeDesktop);
 
         using var instance = SingleInstance.TryAcquire();
         if (instance is null)
@@ -36,7 +37,7 @@ internal static class Program
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         }
 
-        var log = new AppLog();
+        var log = new AppLog(options.LogFile);
         try
         {
             var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };

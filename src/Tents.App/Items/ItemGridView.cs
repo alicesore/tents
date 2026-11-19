@@ -29,6 +29,9 @@ internal interface IItemViewHost
 
     /// <summary>The user started dragging these items.</summary>
     void StartDrag(IReadOnlyList<DesktopItem> items);
+
+    /// <summary>The view drew itself. Called at the end of every render pass; must be cheap.</summary>
+    void ViewRendered();
 }
 
 /// <summary>
@@ -179,6 +182,8 @@ internal sealed class ItemGridView : FrameworkElement, IScrollInfo
             var label = GetLabel(item);
             drawingContext.DrawText(label, new Point(cell.X + _labelGap, cell.Y + _iconTop + ItemGrid.IconSize + _labelGap));
         }
+
+        _host.ViewRendered();
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

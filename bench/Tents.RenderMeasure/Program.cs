@@ -240,6 +240,10 @@ internal static class Program
         }
 
         public bool CanDelete(TentId tent) => false;
+
+        public void Activity()
+        {
+        }
     }
 }
 
