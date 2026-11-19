@@ -78,7 +78,11 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     private nint _foregroundBeforeEdit;
 
     /// <param name="snapGrid">Grid in physical pixels that moves and resizes snap to; 0 for none (the default).</param>
-    public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands, int snapGrid = 0)
+    /// <param name="transparent">
+    /// A layered window with a translucent background (<c>AllowsTransparency</c>). Off in the app; the M1 step 12
+    /// measurement compares both.
+    /// </param>
+    public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands, int snapGrid = 0, bool transparent = false)
     {
         ArgumentNullException.ThrowIfNull(tent);
         ArgumentNullException.ThrowIfNull(host);
@@ -94,7 +98,8 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         ShowInTaskbar = false;
         ShowActivated = false;
         WindowStartupLocation = WindowStartupLocation.Manual;
-        Background = TentTheme.Background;
+        AllowsTransparency = transparent;
+        Background = transparent ? TentTheme.TranslucentBackground : TentTheme.Background;
         BorderBrush = TentTheme.Border;
         BorderThickness = new Thickness(1);
 
@@ -191,6 +196,9 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     }
 
     public void ClearSelection() => _items.ClearSelection();
+
+    /// <summary>The item view, for the rendering measurement.</summary>
+    internal ItemGridView ItemView => _items;
 
     public void SetVisible(bool visible)
     {
@@ -549,6 +557,8 @@ internal static class TentTheme
     public const double TitleBarHeight = 28;
 
     public static Brush Background { get; } = Frozen(Color.FromRgb(0x1E, 0x24, 0x2C));
+
+    public static Brush TranslucentBackground { get; } = Frozen(Color.FromArgb(0xD0, 0x1E, 0x24, 0x2C));
 
     public static Brush TitleBar { get; } = Frozen(Color.FromRgb(0x2A, 0x32, 0x3C));
 
