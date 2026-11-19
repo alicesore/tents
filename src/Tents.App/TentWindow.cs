@@ -2,8 +2,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using Tents.App.Items;
 using Tents.Core;
+using Tents.Shell.Desktop;
+using Tents.Shell.DragDrop;
 using Tents.Shell.Hosting;
+using Tents.Shell.Icons;
+using Tents.Shell.Menus;
 
 namespace Tents.App;
 
@@ -12,33 +17,50 @@ internal interface ITentCommands
 {
     /// <summary>Exit Tents.</summary>
     void Exit();
+
+    /// <summary>The user clicked into this tent.</summary>
+    void TentClicked(TentId tent);
+
+    /// <summary>Run an item's default command (double-click).</summary>
+    void Open(DesktopItem item);
+
+    /// <summary>Show the shell's context menu for items.</summary>
+    void ShowItemMenu(IReadOnlyList<DesktopItem> items, System.Drawing.Point screenPoint, ContextMenuOptions options);
+
+    /// <summary>A drop on a tent finished; <paramref name="insertionIndex"/> is where in the tent it landed.</summary>
+    void Dropped(TentId tent, TentDrop drop, int insertionIndex);
 }
 
 /// <summary>
 /// One tent on the desktop: a borderless WPF window attached to the desktop by an <see cref="IDesktopHost"/> and placed
-/// in physical pixels.
+/// in physical pixels, with a title bar and the tent's items.
 /// </summary>
 /// <remarks>
 /// <para><b>Creation order</b> (spike 1): owner set before the handle exists, so it is set at creation; then the host's
 /// styles; then the bounds; then shown without activation.</para>
 /// <para><b>Never blocks.</b> Everything here is UI work. Shell and file work happens elsewhere and arrives as
-/// <see cref="Update"/> calls.</para>
+/// <see cref="Update"/> calls. The OLE drag loop started from here pumps messages.</para>
 /// </remarks>
-internal sealed class TentWindow : Window, ITentWindow
+internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDropHandler
 {
     private readonly IDesktopHost _host;
+    private readonly ITentCommands _commands;
     private readonly TextBlock _title;
+    private readonly ItemGridView _items;
+    private readonly ContextMenu _menu;
     private Tent _tent;
     private nint _handle;
     private PixelRect? _placing;
+    private TentDropTarget? _dropTarget;
 
-    public TentWindow(Tent tent, IDesktopHost host, ITentCommands commands)
+    public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands)
     {
         ArgumentNullException.ThrowIfNull(tent);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(commands);
         _tent = tent;
         _host = host;
+        _commands = commands;
 
         Title = "Tents";
         WindowStyle = WindowStyle.None;
@@ -58,13 +80,24 @@ internal sealed class TentWindow : Window, ITentWindow
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        var titleBar = new Border { Height = TentTheme.TitleBarHeight, Background = TentTheme.TitleBar, Child = _title };
-        titleBar.ContextMenu = BuildTitleMenu(commands);
+        _menu = BuildTentMenu(commands);
+        var titleBar = new Border { Height = TentTheme.TitleBarHeight, Background = TentTheme.TitleBar, Child = _title, ContextMenu = _menu };
+
+        _items = new ItemGridView(icons, this);
+        _items.SetItems(items);
+        var scroller = new ScrollViewer
+        {
+            CanContentScroll = true, // the view scrolls itself (IScrollInfo)
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Focusable = false,
+            Content = _items,
+        };
 
         var root = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(titleBar, Dock.Top);
         root.Children.Add(titleBar);
-        root.Children.Add(new Border());
+        root.Children.Add(scroller);
         Content = root;
         ShowTent(tent);
     }
@@ -83,18 +116,82 @@ internal sealed class TentWindow : Window, ITentWindow
         Place(_tent.Bounds);
         Show();
         Place(_tent.Bounds); // WPF may re-apply its own size on the first show.
+        _dropTarget = TentDropTarget.Register(_handle, this);
     }
 
-    public void Update(Tent tent)
+    public void Update(Tent tent, IReadOnlyList<DesktopItem> items)
     {
         ArgumentNullException.ThrowIfNull(tent);
+        ArgumentNullException.ThrowIfNull(items);
         var previous = _tent;
         _tent = tent;
         ShowTent(tent);
+        // A re-read that changed nothing for this tent must not redraw it (nothing renders unless something changed).
+        if (!items.SequenceEqual(_items.Items))
+        {
+            _items.SetItems(items);
+        }
+
         if (_handle != 0 && previous.Bounds != tent.Bounds)
         {
             Place(tent.Bounds);
         }
+    }
+
+    public void ClearSelection() => _items.ClearSelection();
+
+    void ITentWindow.Close()
+    {
+        if (_handle != 0)
+        {
+            Close();
+        }
+    }
+
+    // ---- IItemViewHost ----
+
+    public void ItemViewClicked() => _commands.TentClicked(_tent.Id);
+
+    public void OpenItem(DesktopItem item) => _commands.Open(item);
+
+    public void ShowItemMenu(IReadOnlyList<DesktopItem> items, System.Drawing.Point screenPoint, ContextMenuOptions options) =>
+        _commands.ShowItemMenu(items, screenPoint, options);
+
+    public void ShowEmptyAreaMenu()
+    {
+        _menu.PlacementTarget = this;
+        _menu.IsOpen = true;
+    }
+
+    public void StartDrag(IReadOnlyList<DesktopItem> items)
+    {
+        if (_handle != 0)
+        {
+            ShellDragSource.DoDragDrop(_handle, items); // modal OLE loop; it pumps messages
+        }
+    }
+
+    // ---- ITentDropHandler ----
+
+    DesktopItem? ITentDropHandler.HitTest(System.Drawing.Point screenPoint) => _items.ItemAtScreen(screenPoint);
+
+    void ITentDropHandler.Dropped(TentDrop drop) => _commands.Dropped(_tent.Id, drop, _items.InsertionIndexAtScreen(drop.ScreenPoint));
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _dropTarget?.Dispose();
+        _dropTarget = null;
+        _handle = 0;
+        base.OnClosed(e);
+    }
+
+    private static ContextMenu BuildTentMenu(ITentCommands commands)
+    {
+        var exit = new MenuItem { Header = "E_xit Tents" };
+        exit.Click += (_, _) => commands.Exit();
+        var menu = new ContextMenu();
+        menu.Items.Add(exit);
+        return menu;
     }
 
     /// <summary>
@@ -120,29 +217,6 @@ internal sealed class TentWindow : Window, ITentWindow
         {
             _placing = null;
         }
-    }
-
-    void ITentWindow.Close()
-    {
-        if (_handle != 0)
-        {
-            Close();
-        }
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        _handle = 0;
-        base.OnClosed(e);
-    }
-
-    private static ContextMenu BuildTitleMenu(ITentCommands commands)
-    {
-        var exit = new MenuItem { Header = "E_xit Tents" };
-        exit.Click += (_, _) => commands.Exit();
-        var menu = new ContextMenu();
-        menu.Items.Add(exit);
-        return menu;
     }
 
     private void ShowTent(Tent tent) => _title.Text = tent.Title;
@@ -178,6 +252,10 @@ internal static class TentTheme
     public static Brush Border { get; } = Frozen(Color.FromRgb(0x3A, 0x44, 0x50));
 
     public static Brush Text { get; } = Frozen(Color.FromRgb(0xF2, 0xF4, 0xF6));
+
+    public static Brush Hover { get; } = Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+
+    public static Brush Selection { get; } = Frozen(Color.FromArgb(0x70, 0x4A, 0x90, 0xD9));
 
     private static SolidColorBrush Frozen(Color color)
     {
