@@ -82,5 +82,9 @@ public sealed class ItemGridViewTests
         public void StartDrag(IReadOnlyList<DesktopItem> items)
         {
         }
+
+        public void ViewRendered()
+        {
+        }
     }
 }

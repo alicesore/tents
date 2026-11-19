@@ -25,6 +25,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private readonly DesktopItemSource _source;
     private readonly IconCache _icons = new();
     private readonly ShellActions _actions = new();
+    private readonly MemoryReclaimer _reclaimer = new(MemoryReclaimer.Collect);
     private DesktopFeed? _feed;
     private TentWindowSet? _windows;
     private ControllerWindow? _controller;
@@ -51,6 +52,8 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _log = log;
         _host = host;
         _source = options.DesktopFolder is { } folder ? DesktopItemSource.ForFolder(folder) : new DesktopItemSource();
+        _reclaimer.Reclaimed += (_, _) => _log.Write(FormattableString.Invariant(
+            $"Memory given back after activity: {Environment.WorkingSet / 1048576.0:F1} MB working set, managed heap {GC.GetGCMemoryInfo().TotalCommittedBytes / 1048576.0:F1} MB committed."));
     }
 
     /// <summary>
@@ -131,6 +134,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
 
         _disposed = true;
         _shuttingDown = true;
+        _reclaimer.Dispose();
         _windows?.CloseAll();
         _controller?.Dispose();
         var feed = _feed;
@@ -288,6 +292,8 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         SyncWindows();
     }
 
+    public void Activity() => _reclaimer.Signal();
+
     public bool CanDelete(TentId tent) => _state is not null && tent != _state.Layout.DefaultTentId && _state.Layout.ContainsTent(tent);
 
     public void DeleteTent(TentId tent)
@@ -390,6 +396,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         }
 
         _windows?.Sync(state.Layout, state.ItemsOf);
+        _reclaimer.Signal();
         if (!ReferenceEquals(state.Layout, _savedLayout) && _persistence is not null)
         {
             _savedLayout = state.Layout;
