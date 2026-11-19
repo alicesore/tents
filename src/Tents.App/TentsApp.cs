@@ -33,6 +33,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private NativeIconLayer? _iconLayer;
     private IconLayerGuard? _guard;
     private TrayIcon? _tray;
+    private StartWithWindows? _startup;
     private bool _paused;
     private bool _iconsHiddenOnce;
     private Layout? _savedLayout;
@@ -478,7 +479,9 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
             return;
         }
 
-        var chosen = TrayIcon.ShowMenu(_controller.Handle, TrayText.Menu(_paused), x, y);
+        _startup ??= Environment.ProcessPath is { Length: > 0 } exe ? new StartWithWindows(new UserRunKey(), exe) : null;
+        var startsWithWindows = ReadStartup();
+        var chosen = TrayIcon.ShowMenu(_controller.Handle, TrayText.Menu(_paused, startsWithWindows), x, y);
         switch (chosen)
         {
             case TrayText.NewTentCommand:
@@ -490,6 +493,41 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
             case TrayText.ExitCommand:
                 Exit();
                 break;
+            case TrayText.StartWithWindowsCommand:
+                SetStartup(!startsWithWindows);
+                break;
+        }
+    }
+
+    // One small registry value, read when the menu opens and written when the user toggles it.
+    private bool ReadStartup()
+    {
+        try
+        {
+            return _startup?.IsOn ?? false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            _log.Write($"Reading the Run key failed ({ex.GetType().Name}).");
+            return false;
+        }
+    }
+
+    private void SetStartup(bool on)
+    {
+        if (_startup is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _startup.Set(on);
+            _log.Write(on ? "Start with Windows: on." : "Start with Windows: off.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            _log.Write($"Changing Start with Windows failed ({ex.GetType().Name}).");
         }
     }
 
