@@ -77,6 +77,13 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _iconLayer = new NativeIconLayer(_guard, _log, _options.HideNativeIcons);
         await _iconLayer.RecoverAsync();
 
+        // Crash safety, second layer: a watchdog process restores the icons if this one is killed. Only needed when
+        // this run may turn them off.
+        if (_iconLayer.SwitchingEnabled)
+        {
+            Safety.Watchdog.Launch(_log);
+        }
+
         _persistence = new LayoutPersistence(new LayoutFileStore(_options.LayoutFile ?? LayoutFileStore.DefaultFilePath), _log);
         var saved = await _persistence.LoadAsync();
         if (_shuttingDown)
