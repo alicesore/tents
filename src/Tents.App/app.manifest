@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tents.exe application manifest (M1 step 13).
+  - Per-monitor v2 DPI awareness: tent bounds are physical pixels (PixelRect), each tent renders crisply at the DPI of
+    the monitor it is on, and Windows sends WM_DPICHANGED when that changes. "true/pm" is the fallback for systems that
+    do not read dpiAwareness. Source: https://learn.microsoft.com/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process
+  - supportedOS: Windows 10 and Windows 11 (one GUID for both). Source:
+    https://learn.microsoft.com/windows/win32/sbscs/application-manifests#supportedos
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="Tents.App"/>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+</assembly>
