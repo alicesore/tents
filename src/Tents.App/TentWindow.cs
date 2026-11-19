@@ -37,6 +37,18 @@ internal interface ITentCommands
 
     /// <summary>The user clicked the title bar without dragging it: roll the tent up or expand it.</summary>
     void TitleClicked(TentId tent);
+
+    /// <summary>Create a new tent next to this one.</summary>
+    void NewTent(TentId from);
+
+    /// <summary>The user finished editing the tent's title.</summary>
+    void RenameTent(TentId tent, string title);
+
+    /// <summary>Delete the tent, after asking. Its items go to the default tent.</summary>
+    void DeleteTent(TentId tent);
+
+    /// <summary>False for the default tent, which cannot be deleted.</summary>
+    bool CanDelete(TentId tent);
 }
 
 /// <summary>
@@ -54,6 +66,7 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     private readonly IDesktopHost _host;
     private readonly ITentCommands _commands;
     private readonly TextBlock _title;
+    private readonly TextBox _titleEditor;
     private readonly ItemGridView _items;
     private readonly ContextMenu _menu;
     private Tent _tent;
@@ -61,6 +74,8 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     private PixelRect? _placing;
     private TentDropTarget? _dropTarget;
     private DragSession? _drag;
+    private bool _editing;
+    private nint _foregroundBeforeEdit;
 
     /// <param name="snapGrid">Grid in physical pixels that moves and resizes snap to; 0 for none (the default).</param>
     public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands, int snapGrid = 0)
@@ -91,8 +106,26 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        _menu = BuildTentMenu(commands);
-        var titleBar = new Border { Height = TentTheme.TitleBarHeight, Background = TentTheme.TitleBar, Child = _title, ContextMenu = _menu };
+        _titleEditor = new TextBox
+        {
+            Visibility = Visibility.Collapsed,
+            MaxLength = MaxTitleLength,
+            Margin = new Thickness(6, 3, 6, 3),
+            Padding = new Thickness(2, 0, 2, 0),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            FontSize = 13,
+            Foreground = TentTheme.Text,
+            Background = TentTheme.Background,
+            CaretBrush = TentTheme.Text,
+            BorderBrush = TentTheme.Border,
+        };
+        _titleEditor.PreviewKeyDown += OnTitleEditorKey;
+        _titleEditor.LostKeyboardFocus += (_, _) => EndRename(commit: true);
+        var titleContent = new Grid();
+        titleContent.Children.Add(_title);
+        titleContent.Children.Add(_titleEditor);
+        _menu = BuildTentMenu();
+        var titleBar = new Border { Height = TentTheme.TitleBarHeight, Background = TentTheme.TitleBar, Child = titleContent, ContextMenu = _menu };
 
         _items = new ItemGridView(icons, this);
         _items.SetItems(items);
@@ -113,7 +146,13 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         ShowTent(tent);
     }
 
+    /// <summary>Longest title the editor accepts.</summary>
+    public const int MaxTitleLength = 100;
+
     public TentId TentId => _tent.Id;
+
+    /// <summary>True while the title is being edited.</summary>
+    public bool IsEditingTitle => _editing;
 
     public int SnapGrid { get; }
 
@@ -289,8 +328,11 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         _ => null,
     };
 
-    private DragHandle HandleAt(Point position) =>
-        TentDrag.HandleAt(position, new Size(ActualWidth, ActualHeight), TentTheme.TitleBarHeight, _tent.IsRolledUp);
+    private DragHandle HandleAt(Point position)
+    {
+        var handle = TentDrag.HandleAt(position, new Size(ActualWidth, ActualHeight), TentTheme.TitleBarHeight, _tent.IsRolledUp);
+        return _editing && handle == DragHandle.Move ? DragHandle.None : handle; // clicks go to the title editor
+    }
 
     private static double MinimumHeight(double scale) => Math.Max(TentDrag.MinHeight, TentTheme.TitleBarHeight + 2) * scale;
 
@@ -342,12 +384,82 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         base.OnClosed(e);
     }
 
-    private static ContextMenu BuildTentMenu(ITentCommands commands)
+    /// <summary>
+    /// Starts editing the title in place. The tent window is activated for the edit only (a tent never takes focus
+    /// otherwise), and the window that was active before gets the foreground back when the edit ends.
+    /// </summary>
+    public void BeginRename()
     {
+        if (_handle == 0 || _editing)
+        {
+            return;
+        }
+
+        _editing = true;
+        _foregroundBeforeEdit = NativeWindow.GetForeground();
+        _titleEditor.Text = _tent.Title;
+        _title.Visibility = Visibility.Hidden;
+        _titleEditor.Visibility = Visibility.Visible;
+        Activate();
+        _titleEditor.Focus();
+        Keyboard.Focus(_titleEditor);
+        _titleEditor.SelectAll();
+    }
+
+    private void OnTitleEditorKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            EndRename(commit: true);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            EndRename(commit: false);
+            e.Handled = true;
+        }
+    }
+
+    private void EndRename(bool commit)
+    {
+        if (!_editing)
+        {
+            return;
+        }
+
+        _editing = false; // first: hiding the editor raises LostKeyboardFocus again
+        var title = _titleEditor.Text.Trim();
+        _titleEditor.Visibility = Visibility.Collapsed;
+        _title.Visibility = Visibility.Visible;
+        if (_handle != 0 && NativeWindow.GetForeground() == _handle && _foregroundBeforeEdit != _handle)
+        {
+            NativeWindow.SetForeground(_foregroundBeforeEdit);
+        }
+
+        if (commit && !string.Equals(title, _tent.Title, StringComparison.Ordinal))
+        {
+            _commands.RenameTent(_tent.Id, title);
+        }
+    }
+
+    private ContextMenu BuildTentMenu()
+    {
+        var newTent = new MenuItem { Header = "_New tent" };
+        newTent.Click += (_, _) => _commands.NewTent(_tent.Id);
+        var rename = new MenuItem { Header = "_Rename tent" };
+        rename.Click += (_, _) => BeginRename();
+        var delete = new MenuItem { Header = "_Delete tent..." };
+        delete.Click += (_, _) => _commands.DeleteTent(_tent.Id);
         var exit = new MenuItem { Header = "E_xit Tents" };
-        exit.Click += (_, _) => commands.Exit();
+        exit.Click += (_, _) => _commands.Exit();
+
         var menu = new ContextMenu();
+        menu.Items.Add(newTent);
+        menu.Items.Add(rename);
+        menu.Items.Add(delete);
+        menu.Items.Add(new Separator());
         menu.Items.Add(exit);
+        menu.Opened += (_, _) => delete.IsEnabled = _commands.CanDelete(_tent.Id);
         return menu;
     }
 

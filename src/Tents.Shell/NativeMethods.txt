@@ -110,3 +110,4 @@ GetMonitorInfo
 MONITORINFOEXW
 GetDpiForMonitor
 OpenEvent
+GetForegroundWindow

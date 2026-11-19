@@ -188,6 +188,60 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         SyncWindows();
     }
 
+    public void NewTent(TentId from)
+    {
+        if (_state is null || !_state.Layout.TryGetTent(from, out var source))
+        {
+            return;
+        }
+
+        var id = TentId.New();
+        var bounds = TentPlacement.ForNewTent(source.Bounds, Monitors.GetAll());
+        _state = _state.WithLayout(_state.Layout.CreateTent(id, TentText.NewTentTitle, bounds));
+        SyncWindows();
+        _log.Write($"New tent; {_state.Layout.Tents.Length} tent(s).");
+        if (_windows?.TryGet(id, out var window) == true && window is TentWindow tentWindow)
+        {
+            tentWindow.BeginRename();
+        }
+    }
+
+    public void RenameTent(TentId tent, string title)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        if (_state is null || !_state.Layout.ContainsTent(tent))
+        {
+            return;
+        }
+
+        _state = _state.WithLayout(_state.Layout.RenameTent(tent, title));
+        SyncWindows();
+    }
+
+    public bool CanDelete(TentId tent) => _state is not null && tent != _state.Layout.DefaultTentId && _state.Layout.ContainsTent(tent);
+
+    public void DeleteTent(TentId tent)
+    {
+        if (_state is null || !CanDelete(tent))
+        {
+            return;
+        }
+
+        var target = _state.Layout.GetTent(tent);
+        var question = TentText.DeleteQuestion(target.Title, _state.ItemsOf(target).Count, _state.Layout.DefaultTent.Title);
+
+        // A modal message box pumps messages, so the tents and the desktop stay responsive while it is open.
+        var answer = MessageBox.Show(question, TentText.DeleteCaption, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes || _state is null || !CanDelete(tent))
+        {
+            return;
+        }
+
+        _state = _state.WithLayout(_state.Layout.DeleteTent(tent));
+        SyncWindows();
+        _log.Write($"Deleted a tent; {_state.Layout.Tents.Length} tent(s).");
+    }
+
     ITentWindow ITentWindowFactory.Create(Tent tent, IReadOnlyList<DesktopItem> items)
     {
         var window = new TentWindow(tent, items, _host, _icons, this, _options.SnapGrid);
