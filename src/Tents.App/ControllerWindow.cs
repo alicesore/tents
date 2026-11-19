@@ -1,6 +1,7 @@
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Tents.Shell.Hosting;
+using Tents.Shell.Tray;
 
 namespace Tents.App;
 
@@ -53,6 +54,9 @@ internal sealed class ControllerWindow : IDisposable
     /// <summary>A notification arrived. Raised on the UI thread.</summary>
     public event EventHandler<ControllerEvent>? EventReceived;
 
+    /// <summary>The user asked for the tray menu, at this screen point (physical pixels). Raised on the UI thread.</summary>
+    public event Action<int, int>? TrayMenuRequested;
+
     public nint Handle => _source.Handle;
 
     public void Dispose()
@@ -76,6 +80,24 @@ internal sealed class ControllerWindow : IDisposable
 
     private nint Hook(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)
     {
+        if (msg == TrayIcon.CallbackMessage)
+        {
+            handled = true;
+            var (request, x, y) = TrayIcon.Classify(wParam, lParam);
+            if (request == TrayRequest.Menu)
+            {
+                _dispatcher.BeginInvoke(() =>
+                {
+                    if (!_disposed)
+                    {
+                        TrayMenuRequested?.Invoke(x, y);
+                    }
+                });
+            }
+
+            return 0;
+        }
+
         var e = _messages.Classify(msg, wParam);
         switch (e)
         {

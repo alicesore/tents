@@ -5,8 +5,10 @@ using Tents.Core.Persistence;
 using Tents.Shell.Desktop;
 using Tents.Shell.DragDrop;
 using Tents.Shell.Hosting;
+using Tents.Shell.IconLayer;
 using Tents.Shell.Icons;
 using Tents.Shell.Menus;
+using Tents.Shell.Tray;
 
 namespace Tents.App;
 
@@ -28,6 +30,11 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private ControllerWindow? _controller;
     private DesktopState? _state;
     private LayoutPersistence? _persistence;
+    private NativeIconLayer? _iconLayer;
+    private IconLayerGuard? _guard;
+    private TrayIcon? _tray;
+    private bool _paused;
+    private bool _iconsHiddenOnce;
     private Layout? _savedLayout;
     private bool _shuttingDown;
     private bool _disposed;
@@ -58,6 +65,17 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
 
         _controller = new ControllerWindow(_log);
         _controller.EventReceived += OnControllerEvent;
+        _controller.TrayMenuRequested += ShowTrayMenu;
+        _tray = new TrayIcon(_controller.Handle, ReadIcon(), TrayText.Tooltip(paused: false));
+        if (!_tray.Add())
+        {
+            _log.Write("No taskbar yet; the tray icon is added on TaskbarCreated.");
+        }
+
+        // An earlier run that died with the native icons off is cleaned up first, whatever this run does.
+        _guard = new IconLayerGuard(new DesktopIconSwitch(_source), new IconLayerStateFile());
+        _iconLayer = new NativeIconLayer(_guard, _log, _options.HideNativeIcons);
+        await _iconLayer.RecoverAsync();
 
         _persistence = new LayoutPersistence(new LayoutFileStore(_options.LayoutFile ?? LayoutFileStore.DefaultFilePath), _log);
         var saved = await _persistence.LoadAsync();
@@ -74,7 +92,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _savedLayout = choice == LayoutChoice.Saved && moved == 0 ? layout : null; // anything else is saved once
         _windows = new TentWindowSet(_host, this);
         SyncWindows();
-        _log.Write($"Showing {_windows.Count} tent(s) on {monitors.Count} monitor(s).");
+        _log.Write($"Showing {_windows.Count} tent(s) on {monitors.Count} monitor(s); native icons {(_iconLayer.SwitchingEnabled ? "switched off once the items are read" : "left on")}.");
 
         // Items arrive asynchronously; the tents are on screen before the first read finishes.
         _feed = new DesktopFeed(_source, _log);
@@ -104,6 +122,17 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
             _ = feed.DisposeAsync().AsTask();
         }
 
+        _tray?.Dispose();
+        _tray = null;
+
+        // Only when the app ends without Shutdown: icons back on before the desktop view goes away (off the UI thread,
+        // bounded).
+        if (_iconLayer is { OwnsIconsOff: true } iconLayer)
+        {
+            iconLayer.ShowNativeIconsAsync().Wait(TimeSpan.FromSeconds(3));
+        }
+
+        _guard?.Dispose();
         _actions.Dispose();
         _icons.Dispose();
         _source.Dispose();
@@ -308,6 +337,14 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _icons.RemoveAllExcept(_state.Items.Keys.ToHashSet());
         SyncWindows();
         _log.Write($"Desktop read: {snapshot.Count} item(s) in {_state.Layout.Tents.Length} tent(s).");
+
+        // The native icons go off only after the tents have the items: right after the switch the view lists nothing
+        // for a moment, and a first read then would find an empty desktop.
+        if (!_iconsHiddenOnce && !_paused && _iconLayer is not null)
+        {
+            _iconsHiddenOnce = true;
+            _ = _iconLayer.HideNativeIconsAsync();
+        }
     }
 
     private void OnBatch(DesktopChangeBatch batch, IReadOnlyList<DesktopItem> added)
@@ -356,6 +393,8 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
                 _log.Write($"TaskbarCreated: {summary.Reattached} re-attached, {summary.AlreadyAttached} already attached, " +
                     $"{summary.Recreated} recreated, {summary.WaitingForDesktop} waiting for a desktop window.");
                 _feed?.OnExplorerRestarted();
+                _tray?.Add(); // the new taskbar has no icons
+                RecheckIconLayer(e);
                 break;
 
             case ControllerEvent.DisplayChanged:
@@ -364,15 +403,21 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
                 break;
 
             case ControllerEvent.SessionLocked:
+                _log.Write($"{e}.");
+                break;
+
             case ControllerEvent.SessionUnlocked:
             case ControllerEvent.Resumed:
                 _log.Write($"{e}.");
+                RecheckIconLayer(e);
                 break;
 
             case ControllerEvent.SessionEnding:
                 // Raised inside WM_ENDSESSION: the process may end when it returns, so this is the one place that waits.
-                // The save runs on the thread pool, so waiting cannot deadlock; it is bounded.
-                _log.Write("Session ending; saving the layout.");
+                // Both run off the UI thread (desktop view thread, thread pool), so waiting cannot deadlock; both are
+                // bounded. The icons come back so a sign-in without Tents does not find an empty desktop.
+                _log.Write("Session ending; native icons back on, saving the layout.");
+                _iconLayer?.ShowNativeIconsAsync().Wait(TimeSpan.FromSeconds(3));
                 _persistence?.FlushAsync().Wait(TimeSpan.FromSeconds(3));
                 break;
 
@@ -380,6 +425,85 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
                 Shutdown("WM_CLOSE");
                 break;
         }
+    }
+
+    // ---- Tray and Pause (M1 step 19) ----
+
+    /// <summary>
+    /// Pause: the native icons come back and every tent is hidden, so the plain desktop is back. Unpause: the tents
+    /// show again, then the native icons go off. The order means the desktop is never empty in between, at most briefly
+    /// doubled.
+    /// </summary>
+    public async void SetPaused(bool paused, string reason)
+    {
+        if (_shuttingDown || paused == _paused || _windows is null || _iconLayer is null)
+        {
+            return;
+        }
+
+        _paused = paused;
+        _log.Write($"{(paused ? "Paused" : "Resumed")} ({reason}).");
+        _tray?.SetTooltip(TrayText.Tooltip(paused));
+        if (paused)
+        {
+            await _iconLayer.ShowNativeIconsAsync();
+            if (_paused && !_shuttingDown)
+            {
+                _windows.SetVisible(false);
+            }
+
+            if (_persistence is not null)
+            {
+                await _persistence.FlushAsync();
+            }
+        }
+        else
+        {
+            _windows.SetVisible(true);
+            await _iconLayer.HideNativeIconsAsync();
+        }
+    }
+
+    private void ShowTrayMenu(int x, int y)
+    {
+        if (_shuttingDown || _controller is null || _state is null)
+        {
+            return;
+        }
+
+        var chosen = TrayIcon.ShowMenu(_controller.Handle, TrayText.Menu(_paused), x, y);
+        switch (chosen)
+        {
+            case TrayText.NewTentCommand:
+                NewTent(_state.Layout.DefaultTentId);
+                break;
+            case TrayText.PauseCommand:
+                SetPaused(!_paused, "tray");
+                break;
+            case TrayText.ExitCommand:
+                Exit();
+                break;
+        }
+    }
+
+    /// <summary>Part B step 8: if the user turned Show desktop icons back on, that is Pause.</summary>
+    private async void RecheckIconLayer(ControllerEvent reason)
+    {
+        if (_paused || _iconLayer is null || !await _iconLayer.UserTurnedIconsOnAsync())
+        {
+            return;
+        }
+
+        SetPaused(true, $"Show desktop icons was turned on, noticed at {reason}");
+    }
+
+    private static byte[] ReadIcon()
+    {
+        using var stream = typeof(TentsApp).Assembly.GetManifestResourceStream("Tents.ico")
+            ?? throw new InvalidOperationException("The Tents.ico resource is missing.");
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.ToArray();
     }
 
     private async void Shutdown(string reason)
@@ -390,6 +514,19 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         }
 
         _log.Write($"Shutdown ({reason}).");
+        if (_iconLayer is not null)
+        {
+            try
+            {
+                // First, before anything is torn down: the plain desktop is back whatever happens next.
+                await _iconLayer.ShowNativeIconsAsync().WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch (TimeoutException)
+            {
+                _log.Write("Turning the native icons on did not finish in time; the state file stays for the next start.");
+            }
+        }
+
         var persistence = _persistence;
         _persistence = null; // saved below, without blocking the UI thread
         Dispose();
