@@ -118,3 +118,4 @@ NOTIFYICONDATAW
 CreateIconFromResourceEx
 DestroyIcon
 AppendMenu
+CoFreeUnusedLibrariesEx

@@ -25,7 +25,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     private readonly DesktopItemSource _source;
     private readonly IconCache _icons = new();
     private readonly ShellActions _actions = new();
-    private readonly MemoryReclaimer _reclaimer = new(MemoryReclaimer.Collect);
+    private readonly MemoryReclaimer _reclaimer;
     private DesktopFeed? _feed;
     private TentWindowSet? _windows;
     private ControllerWindow? _controller;
@@ -52,6 +52,7 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _log = log;
         _host = host;
         _source = options.DesktopFolder is { } folder ? DesktopItemSource.ForFolder(folder) : new DesktopItemSource();
+        _reclaimer = new MemoryReclaimer(ReclaimMemory);
         _reclaimer.Reclaimed += (_, _) => _log.Write(FormattableString.Invariant(
             $"Memory given back after activity: {Environment.WorkingSet / 1048576.0:F1} MB working set, managed heap {GC.GetGCMemoryInfo().TotalCommittedBytes / 1048576.0:F1} MB committed."));
     }
@@ -293,6 +294,21 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
     }
 
     public void Activity() => _reclaimer.Signal();
+
+    /// <summary>Runs on the thread pool once activity has stopped: shell handlers out, then the managed heap.</summary>
+    private void ReclaimMemory()
+    {
+        try
+        {
+            _icons.ReleaseUnusedHandlersAsync().Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or AggregateException)
+        {
+            // Shutting down, or the icon thread is busy with a slow handler; the next quiet period tries again.
+        }
+
+        MemoryReclaimer.Collect();
+    }
 
     public bool CanDelete(TentId tent) => _state is not null && tent != _state.Layout.DefaultTentId && _state.Layout.ContainsTent(tent);
 
