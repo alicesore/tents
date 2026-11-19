@@ -23,4 +23,27 @@ public sealed class AppOptionsTests
 
         Assert.Equal(["--nope", "x"], options.Unknown);
     }
+
+    [Fact]
+    public void Grid_IsOffByDefault() => Assert.Equal(0, AppOptions.Parse([]).SnapGrid);
+
+    [Theory]
+    [InlineData("--grid=16", 16)]
+    [InlineData("--GRID=200", 200)]
+    public void Grid_TakesAPixelSize(string arg, int grid) => Assert.Equal(grid, AppOptions.Parse([arg]).SnapGrid);
+
+    [Theory]
+    [InlineData("--grid=1")]
+    [InlineData("--grid=0")]
+    [InlineData("--grid=-5")]
+    [InlineData("--grid=201")]
+    [InlineData("--grid=abc")]
+    [InlineData("--grid=")]
+    public void Grid_RejectsNonsense(string arg)
+    {
+        var options = AppOptions.Parse([arg]);
+
+        Assert.Equal(0, options.SnapGrid);
+        Assert.Equal([arg], options.Unknown);
+    }
 }

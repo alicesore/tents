@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using Tents.App.Chrome;
 using Tents.App.Items;
 using Tents.Core;
 using Tents.Shell.Desktop;
@@ -29,6 +31,9 @@ internal interface ITentCommands
 
     /// <summary>A drop on a tent finished; <paramref name="insertionIndex"/> is where in the tent it landed.</summary>
     void Dropped(TentId tent, TentDrop drop, int insertionIndex);
+
+    /// <summary>The user moved or resized the tent; <paramref name="bounds"/> are its new physical-pixel bounds.</summary>
+    void BoundsChanged(TentId tent, PixelRect bounds);
 }
 
 /// <summary>
@@ -52,8 +57,10 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     private nint _handle;
     private PixelRect? _placing;
     private TentDropTarget? _dropTarget;
+    private DragSession? _drag;
 
-    public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands)
+    /// <param name="snapGrid">Grid in physical pixels that moves and resizes snap to; 0 for none (the default).</param>
+    public TentWindow(Tent tent, IReadOnlyList<DesktopItem> items, IDesktopHost host, IconCache icons, ITentCommands commands, int snapGrid = 0)
     {
         ArgumentNullException.ThrowIfNull(tent);
         ArgumentNullException.ThrowIfNull(host);
@@ -61,6 +68,7 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
         _tent = tent;
         _host = host;
         _commands = commands;
+        SnapGrid = Math.Max(0, snapGrid);
 
         Title = "Tents";
         WindowStyle = WindowStyle.None;
@@ -103,6 +111,8 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
     }
 
     public TentId TentId => _tent.Id;
+
+    public int SnapGrid { get; }
 
     public nint Handle => _handle;
 
@@ -177,6 +187,126 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
 
     void ITentDropHandler.Dropped(TentDrop drop) => _commands.Dropped(_tent.Id, drop, _items.InsertionIndexAtScreen(drop.ScreenPoint));
 
+    // ---- Move and resize (M1 step 14) ----
+    //
+    // The title bar moves the tent and the edges resize it. A press on a handle captures the mouse; the window follows
+    // the pointer in physical pixels; releasing reports the final bounds once. While nothing is dragged, these handlers
+    // only update the cursor over the edges.
+
+    protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        var position = e.GetPosition(this);
+        var handle = HandleAt(position);
+        if (handle == DragHandle.None || _handle == 0 || NativeWindow.GetBounds(_handle) is not { } bounds)
+        {
+            base.OnPreviewMouseLeftButtonDown(e);
+            return;
+        }
+
+        _commands.TentClicked(_tent.Id);
+        _drag = new DragSession(handle, PointToScreen(position), bounds);
+        CaptureMouse();
+        e.Handled = true;
+    }
+
+    protected override void OnPreviewMouseMove(MouseEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        var position = e.GetPosition(this);
+        if (_drag is not { } drag)
+        {
+            Cursor = CursorFor(HandleAt(position));
+            base.OnPreviewMouseMove(e);
+            return;
+        }
+
+        e.Handled = true;
+        var delta = PointToScreen(position) - drag.StartScreen; // physical pixels
+        var scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (!drag.Moved && !TentDrag.IsDrag(delta, SystemParameters.MinimumHorizontalDragDistance * scale, SystemParameters.MinimumVerticalDragDistance * scale))
+        {
+            return;
+        }
+
+        drag.Moved = true;
+        var start = drag.StartBounds;
+        if (drag.Handle == DragHandle.Move && NativeWindow.GetBounds(_handle) is { } current)
+        {
+            // Crossing to a monitor with another scale rescales the window (WM_DPICHANGED); keep the new size.
+            start = start.WithSize(current.Width, current.Height);
+        }
+
+        var next = TentDrag.Apply(
+            start,
+            drag.Handle,
+            (int)Math.Round(delta.X),
+            (int)Math.Round(delta.Y),
+            (int)Math.Round(TentDrag.MinWidth * scale),
+            (int)Math.Round(MinimumHeight(scale)),
+            SnapGrid);
+        NativeWindow.SetBounds(_handle, next);
+    }
+
+    protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (_drag is not null)
+        {
+            EndDrag();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnPreviewMouseLeftButtonUp(e);
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        EndDrag(); // capture taken away (another window, a menu): keep where the tent got to
+        base.OnLostMouseCapture(e);
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        if (_drag is null)
+        {
+            Cursor = null;
+        }
+
+        base.OnMouseLeave(e);
+    }
+
+    private static Cursor? CursorFor(DragHandle handle) => handle switch
+    {
+        DragHandle.Left or DragHandle.Right => Cursors.SizeWE,
+        DragHandle.Top or DragHandle.Bottom => Cursors.SizeNS,
+        DragHandle.TopLeft or DragHandle.BottomRight => Cursors.SizeNWSE,
+        DragHandle.TopRight or DragHandle.BottomLeft => Cursors.SizeNESW,
+        _ => null,
+    };
+
+    private DragHandle HandleAt(Point position) =>
+        TentDrag.HandleAt(position, new Size(ActualWidth, ActualHeight), TentTheme.TitleBarHeight, _tent.IsRolledUp);
+
+    private static double MinimumHeight(double scale) => Math.Max(TentDrag.MinHeight, TentTheme.TitleBarHeight + 2) * scale;
+
+    private void EndDrag()
+    {
+        if (_drag is not { } drag)
+        {
+            return;
+        }
+
+        _drag = null; // before releasing: the release raises LostMouseCapture
+        ReleaseMouseCapture();
+        if (drag.Moved && _handle != 0 && NativeWindow.GetBounds(_handle) is { } bounds)
+        {
+            _tent = _tent with { Bounds = bounds };
+            _commands.BoundsChanged(_tent.Id, bounds);
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         _dropTarget?.Dispose();
@@ -238,6 +368,20 @@ internal sealed class TentWindow : Window, ITentWindow, IItemViewHost, ITentDrop
 
         return 0;
     }
+}
+
+/// <summary>One press-and-drag on a tent's title bar or edge.</summary>
+internal sealed class DragSession(DragHandle handle, Point startScreen, PixelRect startBounds)
+{
+    public DragHandle Handle { get; } = handle;
+
+    /// <summary>Where the press was, in physical screen pixels.</summary>
+    public Point StartScreen { get; } = startScreen;
+
+    public PixelRect StartBounds { get; } = startBounds;
+
+    /// <summary>The pointer has moved past the drag threshold.</summary>
+    public bool Moved { get; set; }
 }
 
 /// <summary>Colors and sizes shared by every tent. Frozen brushes, created once.</summary>

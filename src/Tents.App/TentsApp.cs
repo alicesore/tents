@@ -166,9 +166,20 @@ internal sealed class TentsApp : ITentCommands, ITentWindowFactory, IDisposable
         _log.Write($"Drop of {drop.Items.Count} item(s): {drop.Route}, {drop.Effect}.");
     }
 
+    public void BoundsChanged(TentId tent, PixelRect bounds)
+    {
+        if (_state is null || !_state.Layout.ContainsTent(tent) || !bounds.HasPositiveSize)
+        {
+            return;
+        }
+
+        _state = _state.WithLayout(_state.Layout.SetTentBounds(tent, bounds));
+        SyncWindows();
+    }
+
     ITentWindow ITentWindowFactory.Create(Tent tent, IReadOnlyList<DesktopItem> items)
     {
-        var window = new TentWindow(tent, items, _host, _icons, this);
+        var window = new TentWindow(tent, items, _host, _icons, this, _options.SnapGrid);
         window.Closed += (_, _) =>
         {
             if (!_shuttingDown)
